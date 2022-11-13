@@ -45,7 +45,15 @@ root
     |------------------------------------------------------|
     |                                                      |-LineNode
     |                                                      |-------------|-----------|-------------|          
-    |---------------------------|                          trans5        mesh5      shaderdec5      vArray5
+    |                                                      trans5        mesh5      shaderdec5      vArray5
+    |------------------------------------------------------|
+    |                                                      |-SplineNode
+    |                                                      |-------------|-----------|-------------|          
+    |                                                      trans6        mesh6      shaderdec6      vArray6
+    |------------------------------------------------------|
+    |                                                      |-TriangleNode
+    |                                                      |-------------|-----------|-------------|          
+    |---------------------------|                          trans7        mesh7      shaderdec7      vArray7
     entityCam1,                 PointsNode,      
     |-------|                    |--------------|----------|--------------|           
     trans1, entityCam2           trans4,        mesh4,     shaderDec4     vArray4
@@ -53,6 +61,43 @@ root
             ortho, trans2                   
 
 """
+
+class IndexedConverter():
+    
+    # Assumes triangulated buffers. Produces indexed results that support
+    # normals as well.
+    def Convert(self, vertices, colors, indices, produceNormals=True):
+
+        iVertices = [];
+        iColors = [];
+        iNormals = [];
+        iIndices = [];
+        for i in range(0, len(indices), 3):
+            iVertices.append(vertices[indices[i]]);
+            iVertices.append(vertices[indices[i + 1]]);
+            iVertices.append(vertices[indices[i + 2]]);
+            iColors.append(colors[indices[i]]);
+            iColors.append(colors[indices[i + 1]]);
+            iColors.append(colors[indices[i + 2]]);
+            
+
+            iIndices.append(i);
+            iIndices.append(i + 1);
+            iIndices.append(i + 2);
+
+        if produceNormals:
+            for i in range(0, len(indices), 3):
+                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+
+        iVertices = np.array( iVertices, dtype=np.float32 )
+        iColors   = np.array( iColors,   dtype=np.float32 )
+        iIndices  = np.array( iIndices,  dtype=np.uint32  )
+
+        iNormals  = np.array( iNormals,  dtype=np.float32 )
+
+        return iVertices, iColors, iIndices, iNormals;
 
 
 class GameObjectEntity(Entity):
@@ -93,6 +138,32 @@ class GameObjectEntity(Entity):
         self.mesh.vertex_index.append(index)
         if normals is not None:
             self.mesh.vertex_attributes.append(normals)
+
+
+def TriangleSpawn(trianglename = "Triangle",p1=[0,0,0,1],p2 = [0.4,0.4,0,1],p3 = [0.8,0.0,0,1], r=0.55,g=0.55,b=0.55):
+    triangle = GameObjectEntity(trianglename,primitiveID=gl.GL_TRIANGLES)
+    vertices = [
+        p1,p2,p3
+    ]
+    colors = [
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0]
+    ]
+    
+    indices = np.array(
+        (
+            1,0,2
+        ),
+        dtype=np.uint32
+    ) 
+    #vertices, colors, indices, normals = IndexedConverter().Convert(vertices, colors, indices, produceNormals=True)
+
+    #triangle.SetVertexAttributes(vertices, colors, indices, normals)
+    triangle.SetVertexAttributes(vertices, colors, indices, None)
+
+    
+    return triangle
 
 def LineSpawn(linename = "Line",p1=[0,0,0,1],p2 = [0.4,0.4,0,1], r=0.7,g=0.7,b=0.7):
     line = GameObjectEntity(linename,primitiveID=gl.GL_LINES)
@@ -157,13 +228,20 @@ def main (imguiFlag = False):
     trans4 = BasicTransform(name="trans4", trs=util.identity())
     scene.world.addComponent(PointsNode, trans4)
     
-    
-    
     LinesNode = scene.world.createEntity(Entity("LinesNode"))
     scene.world.addEntityChild(rootEntity, LinesNode)
     trans5 = BasicTransform(name="trans5", trs=util.identity())
-    scene.world.addComponent(PointsNode, trans5)
+    scene.world.addComponent(LinesNode, trans5)
 
+    SplineNode = scene.world.createEntity(Entity("SplineNode"))
+    scene.world.addEntityChild(rootEntity, SplineNode)
+    trans6 = BasicTransform(name="trans6", trs=util.identity())
+    scene.world.addComponent(SplineNode, trans6)
+
+    TriangleNode = scene.world.createEntity(Entity("TriangleNode"))
+    scene.world.addEntityChild(rootEntity, TriangleNode)
+    trans7 = BasicTransform(name="trans7", trs=util.identity())
+    scene.world.addComponent(TriangleNode, trans7)
 
     axes = scene.world.createEntity(Entity(name="axes"))
     scene.world.addEntityChild(rootEntity, axes)
@@ -201,8 +279,6 @@ def main (imguiFlag = False):
     """
     test_renderPointGenaratorEVENT
     """
-
-
     # Generate terrain
     from pyGLV.GL.terrain import generateTerrain
     vertexTerrain, indexTerrain, colorTerrain= generateTerrain(size=4,N=20)
@@ -293,15 +369,20 @@ def main (imguiFlag = False):
     PointSize = 5    
     #LISTS
     LinesList = [] 
+    SplineList = []
     keys = []
     values = []
     #LISTS
     toggleSwitch = True
     toggleLineSwitch = True
     toggleLineZSwitch = True
+    toggleSplineSwitch = True
+    togglePlatformSwitch = True
     #MOST USEFUL GLOBALS
     pointchild = 0
     linechild = 0
+    splinechild = 0
+    trianglechild =0
     #ALWAYS CHANGING GLOBALS
     linechildZ = 0#used for z=0 lines
     linechildPlane = 0#used for lines that interconnect z=0 with z=1
@@ -329,16 +410,61 @@ def main (imguiFlag = False):
     #while((zPlane) == xPlane or (zPlane) == yPlane):# having x and y plane from the same csv collumn is ugly!
     #   zPlane = random.randint(0, cols)
     zPlane = cols+1
-
-    #pass to a list all the values of Z plane
-    listofValuesZ = np.asarray(pointListfromCSV)[:,zPlane].tolist()
-
+    
     #we split our csv based on common Z plane values and pass it to 2 lists for later use
     for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[zPlane]):
         keys.append(Zplanekey)
         values.append(list(value))
+    for i in range(len(keys)):
+        values[i].sort(key = lambda row: (row[xPlane]),reverse=False)
     
     gl.glPointSize(PointSize)
+    #Displays all nodes created
+    def Dispaly():
+        i=1
+        #print points
+        while i<=pointchild:
+            PointsNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @ PointsNode.getChild(i).trans.l2cam, mat4=True)
+            PointsNode.getChild(i).shaderDec.setUniformVariable(key='my_color', value=[1, 0, 0], float4=True) #its porpuse is to change color on my_color vertex by setting the uniform                  
+
+            i +=1
+        i = 1
+        #print Lines
+        while i <= linechild:
+            if( linechildPlane + i > linechild):#for lines intertwine z plane
+                if(toggleLineZSwitch):
+                    LinesNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LinesNode.getChild(i).trans.l2cam, mat4=True)
+                else:
+                    LinesNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            else:#for lines inside each z plane
+                if(toggleLineSwitch):
+                    LinesNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LinesNode.getChild(i).trans.l2cam, mat4=True)
+                    #LinesNode.getChild(i-1).shaderDec.setUniformVariable(key='my_color', value=[1, 0, 0] , mat4=True)                   
+
+                else:
+                    LinesNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+
+            i+=1
+        i=1
+        #print Splines
+        while i <= splinechild:
+            if(toggleSplineSwitch):
+                SplineNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SplineNode.getChild(i).trans.l2cam, mat4=True)
+            else:
+                SplineNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+            
+        i=1
+        #print platform
+        while i <= trianglechild:
+            if togglePlatformSwitch:
+                TriangleNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @TriangleNode.getChild(i).trans.l2cam, mat4=True)
+            else:
+                TriangleNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+
+        i=1
+        scene.render_post()
     while running:
         running = scene.render(running)
         scene.world.traverse_visit(renderUpdate, scene.world.root)
@@ -350,8 +476,6 @@ def main (imguiFlag = False):
         if (key.is_pressed("t")):#create points 
             toggleSwitch = not toggleSwitch
             time.sleep(0.15)
-            
-
         if (toggleSwitch):
             axes_shader.setUniformVariable(key='modelViewProj', value=mvp_terrain_axes, mat4= True)
             terrain_shader.setUniformVariable(key='modelViewProj', value=mvp_terrain_axes, mat4= True)
@@ -367,13 +491,8 @@ def main (imguiFlag = False):
                     vars()[DynamicVariable]: GameObjectEntity = PointSpawn(DynamicVariable,0,1,1)
                     scene.world.addEntityChild(PointsNode, vars()[DynamicVariable]) 
                     PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], pointListfromCSV[i][zPlane])
-                    #(x,y) = PointsNode.getChild(pointchild).trans.l2cam[0][3], PointsNode.getChild(pointchild).trans.l2cam[1][3] # passing the points location to a Lines 
-                    #LinesListTOz0.append((x,y,0,1))
-                    #pointTOz0+=1
+                scene.world.traverse_visit(initUpdate, scene.world.root)
             
-            scene.world.traverse_visit(initUpdate, scene.world.root)
-            
-            #print(DynamicVariable)
             time.sleep(0.15)
         #Print Median Point Mechanism
         elif (key.is_pressed("m")):
@@ -398,13 +517,9 @@ def main (imguiFlag = False):
         #Connect line between two points mechanism
         elif (key.is_pressed("s")):
             
-            if(linechildZ!=0 ):
-                toggleLineSwitch = not toggleLineSwitch
             if(linechildZ == 0 and pointchild != 0):
                 for i in range(len(keys)):
                     ValuesarrayLength = len(values[i])
-                    values[i].sort(key = lambda row: (row[xPlane]),reverse=False)
-                    
                     linechildZCurrPlane=0
                     while(linechildZCurrPlane < ValuesarrayLength-1):
                         r = random.uniform(0, 1.0)
@@ -414,18 +529,17 @@ def main (imguiFlag = False):
                         linechildZ +=1
                         linechildZCurrPlane += 1
                         DynamicVariable = "Line" + str(linechild)
-                        (x,y,z,w) =  values[i][linechildZCurrPlane][xPlane], values[i][linechildZCurrPlane][yPlane] , values[i][linechildZCurrPlane][zPlane], 1 
-                        (xPrev,yPrev,zPrev,wPrev) =  values[i][linechildZCurrPlane-1][xPlane], values[i][linechildZCurrPlane-1][yPlane] , values[i][linechildZCurrPlane-1][zPlane], 1 
+                        point1 =  values[i][linechildZCurrPlane][xPlane], values[i][linechildZCurrPlane][yPlane] , values[i][linechildZCurrPlane][zPlane], 1 
+                        point2 =  values[i][linechildZCurrPlane-1][xPlane], values[i][linechildZCurrPlane-1][yPlane] , values[i][linechildZCurrPlane-1][zPlane], 1 
 
-                        vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,(xPrev,yPrev,zPrev,wPrev),(x,y,z,w),r,g,b)
-                        scene.world.addEntityChild(LinesNode, vars()[DynamicVariable])          
-            scene.world.traverse_visit(initUpdate, scene.world.root)
+                        vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1,r,g,b)
+                        scene.world.addEntityChild(LinesNode, vars()[DynamicVariable])      
+                scene.world.traverse_visit(initUpdate, scene.world.root)    
+            else:
+                toggleLineSwitch = not toggleLineSwitch
             
             time.sleep(0.15)
         elif (key.is_pressed("l")):
-            if(linechildPlane!=0):
-                toggleLineZSwitch = not toggleLineZSwitch
-            
             if(linechildPlane==0 and linechildZ != 0):
                 for i in range(len(keys)):
                     LinesList += values[i]
@@ -435,42 +549,76 @@ def main (imguiFlag = False):
                     linechild +=1 
                     linechildPlane +=1
                     DynamicVariable = "Line" + str(linechild)
-                    (x,y,z,w)                 =  LinesList[linechildPlane][xPlane], LinesList[linechildPlane][yPlane] , LinesList[linechildPlane][zPlane], 1 
-                    (xPrev,yPrev,zPrev,wPrev) =  LinesList[linechildPlane-1][xPlane], LinesList[linechildPlane-1][yPlane] , LinesList[linechildPlane-1][zPlane], 1 
-                    vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,(xPrev,yPrev,zPrev,wPrev),(x,y,z,w),1,0,0)
+                    point1 =  LinesList[linechildPlane][xPlane], LinesList[linechildPlane][yPlane] , LinesList[linechildPlane][zPlane], 1 
+                    point2 =  LinesList[linechildPlane-1][xPlane], LinesList[linechildPlane-1][yPlane] , LinesList[linechildPlane-1][zPlane], 1 
+                    vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1,1,0,0)
                     scene.world.addEntityChild(LinesNode, vars()[DynamicVariable])
-                else:
-                    print("Lines Already Spawned")
-            
-            scene.world.traverse_visit(initUpdate, scene.world.root)
+                scene.world.traverse_visit(initUpdate, scene.world.root)
+            else:
+                toggleLineZSwitch = not toggleLineZSwitch         
+                
             time.sleep(0.15)
         #print spline
         elif (key.is_pressed("e")):
-            z =0
-            print("VALUES ARE ",values)
-            if(LinesList):
-                arr = np.array(LinesList)
-                xPointToSpline = arr[:,xPlane]
-                yPointToSpline = arr[:,yPlane]
-                print(xPointToSpline)
-                
-                f = CubicSpline(xPointToSpline,yPointToSpline, bc_type='natural')
-                x_new = np.linspace(0, 2, 100)
-                y_new = f(x_new)
-                print(x_new, "\n")
-                print(y_new)
-
-                plt.figure(figsize = (10,8))
-                plt.plot(x_new, y_new, 'b')
-                plt.plot(xPointToSpline, yPointToSpline, 'ro')
-                plt.title('Cubic Spline Interpolation')
-                plt.xlabel('x')
-                plt.ylabel('y')
-                plt.show()
-                z+=2
+            if(splinechild ==0):
+                for i in range(len(keys)):
+                    if(values[i]):
+                        arr = np.array(values[i])
+                        xPointToSpline = arr[:,xPlane]
+                        yPointToSpline = arr[:,yPlane]
+                        
+                        f = CubicSpline(xPointToSpline,yPointToSpline, bc_type='natural')
+                        x_new = np.linspace(0.2, 3, len(values[i])*6)
+                        y_new = f(x_new)
+                        z_new = keys[i]
+                        l =0
+                        while l < len(x_new) -1 :
+                            splinechild += 1
+                            l += 1
+                            DynamicVariable = "Spline" + str(splinechild)
+                            point1 = x_new[l], y_new[l], z_new, 1
+                            point2 = x_new[l-1], y_new[l-1], z_new, 1  
+                            vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1,0,1,0)
+                            scene.world.addEntityChild(SplineNode, vars()[DynamicVariable])
+                        scene.world.traverse_visit(initUpdate, scene.world.root)
+                        SplineList.append(f)#pass the spline functions to a list for later use
+            else:
+                toggleSplineSwitch = not toggleSplineSwitch
             
             time.sleep(0.15)
+        elif(key.is_pressed("b")):
+            if(SplineList and trianglechild==0):
+                spline1 = SplineList[0]
+                spline2 = SplineList[1]
+                x_new = np.linspace(0.2, 3, len(values[i])*6)
 
+                y_spline1 = spline1(x_new)
+                y_spline2 = spline2(x_new)
+                z_spline1 = keys[0]
+                z_spline2 = keys[1]
+                l =0
+                while l < len(x_new) -1 :
+                    l += 1
+                    #first triangle
+                    trianglechild += 1
+                    DynamicVariable = "Triangle" + str(trianglechild)
+                    point1 = x_new[l-1], y_spline1[l-1], z_spline1, 1
+                    point2 = x_new[l], y_spline1[l], z_spline1, 1
+                    point3 = x_new[l-1], y_spline2[l-1], z_spline2, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
+                    scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
+                    #second triangle
+                    trianglechild += 1
+                    DynamicVariable = "Triangle" + str(trianglechild)
+                    point1 = x_new[l-1], y_spline2[l-1], z_spline2, 1
+                    point2 = x_new[l], y_spline2[l], z_spline2, 1
+                    point3 = x_new[l], y_spline1[l], z_spline1, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
+                    scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
+                scene.world.traverse_visit(initUpdate, scene.world.root)
+            else:
+                togglePlatformSwitch = not togglePlatformSwitch
+            time.sleep(0.15)
         #QUIT button
         elif (key.is_pressed("q")):
             print(" x:", xPlane, " y: ", yPlane, " z: ", zPlane)
@@ -485,33 +633,10 @@ def main (imguiFlag = False):
             PointSize -=1
             gl.glPointSize(PointSize)
             time.sleep(0.15)
-        #print points
-        while i<=pointchild:
-            PointsNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @ PointsNode.getChild(i).trans.l2cam, mat4=True)
-            PointsNode.getChild(i).shaderDec.setUniformVariable(key='my_color', value=[1, 0, 0], float4=True) #its porpuse is to change color on my_color vertex by setting the uniform                  
-
-            i +=1
-        i = 1
-        #print Lines
-        while i <= linechild:
-            if( linechildPlane + i > linechild):#for lines intertwine z plane
-                if(toggleLineZSwitch):
-                    LinesNode.getChild(i-1).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LinesNode.getChild(i-1).trans.l2cam, mat4=True)
-                else:
-                    LinesNode.getChild(i-1).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
-            else:#for lines inside each z plane
-                if(toggleLineSwitch):
-                    LinesNode.getChild(i-1).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LinesNode.getChild(i-1).trans.l2cam, mat4=True)
-                    #LinesNode.getChild(i-1).shaderDec.setUniformVariable(key='my_color', value=[1, 0, 0] , mat4=True)                   
-
-                else:
-                    LinesNode.getChild(i-1).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
-
-            i+=1
-        i=1
-        scene.render_post()
+        Dispaly()
         
     scene.shutdown()
+    
 
 if __name__ == "__main__":    
     main(imguiFlag = True)
