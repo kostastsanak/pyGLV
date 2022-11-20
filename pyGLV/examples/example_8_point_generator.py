@@ -36,6 +36,7 @@ import matplotlib.pyplot as plt
 
 import itertools
 import os
+import imgui
 """
 Common setup for all unit tests
 
@@ -50,6 +51,11 @@ root
     |                                                      |-SplineNode
     |                                                      |-------------|-----------|-------------|          
     |                                                      trans6        mesh6      shaderdec6      vArray6
+
+    |------------------------------------------------------|
+    |                                                      |-SuperFunction
+    |                                                      |-------------|-----------|-------------|          
+    |                                                      trans8        mesh8      shaderdec8      vArray8
     |------------------------------------------------------|
     |                                                      |-TriangleNode
     |                                                      |-------------|-----------|-------------|          
@@ -61,6 +67,103 @@ root
             ortho, trans2                   
 
 """
+#get random x,y,z planes
+if len(sys.argv) == 2:#receive data from a txt via command line
+    with open(sys.argv[1], 'r') as f:
+        next(f)#skip header
+        if(f):
+            pointListfromCSV = [tuple(map(float, i.split(','))) for i in f]
+else:#receive csv from path
+    reader = pd.read_csv("pyGLV/examples/example_materials/PointCoordinates.csv")
+    pointListfromCSV = [tuple(x) for x in reader.values]
+
+df = pd.DataFrame(pointListfromCSV, index=None)
+cols = len(df.axes[1]) -2
+xPlane = random.randint(0, cols)
+yPlane = random.randint(0, cols)
+#zPlane = random.randint(0, cols)
+
+while((yPlane) == xPlane):# having x and y plane from the same csv collumn is ugly!
+    yPlane = random.randint(0, cols)
+#while((zPlane) == xPlane or (zPlane) == yPlane):# having x and y plane from the same csv collumn is ugly!
+#   zPlane = random.randint(0, cols)
+zPlane = cols+1
+
+#global point size integer
+PointSize = 5    
+
+FuncValues= 5.,5.,5.,5.
+FuncButtonclicked = 0
+
+CSVxyValues= xPlane,yPlane
+CSVButtonclicked = 0
+
+PointsColor = 0., 1., 1., 1
+f_x_y = 'x**2+x*4'
+def displayGUI():
+    """
+        displays ImGui
+    """
+    #global value
+    global FuncValues
+    global FuncButtonclicked
+    global f_x_y
+    imgui.begin("Give Function X,Y Values")
+
+    #implementation for a,b,c,d points for X,Y functions
+    imgui.text("Give a and b values for X() and c and d for Y() functions")
+    changed, FuncValues = imgui.input_float4('', *FuncValues) 
+    #imgui.same_line() 
+    imgui.text("a: %.1f, b: %.1f, c: %.1f, d: %.1f" % (FuncValues[0],FuncValues[1],FuncValues[2],FuncValues[3]))
+
+    changed, f_x_y = imgui.input_text('Amount:',f_x_y,256)
+    imgui.end()
+
+    global xPlane
+    global yPlane
+    global CSVxyValues
+    global CSVButtonclicked
+
+    imgui.begin("- Program - Select CSV Dimension Values")
+    if(CSVButtonclicked):
+        imgui.same_line() 
+
+        imgui.text("X: %d, Y: %d" % (CSVxyValues[0],CSVxyValues[1]))
+        xPlane = CSVxyValues[0]
+        yPlane = CSVxyValues[1]
+        CSVButtonclicked = imgui.button("change")
+        CSVButtonclicked = (CSVButtonclicked - 1) * (CSVButtonclicked - 1)
+    else:
+        imgui.text("Choose Dimension from CSV file for X,Y ")
+        changed, CSVxyValues = imgui.input_int2('', *CSVxyValues) 
+        l=0
+        for l in range(len(CSVxyValues)):
+            if(CSVxyValues[l] > cols):
+                CSVxyValues[l] = cols
+            elif(CSVxyValues[l] < 0):
+                CSVxyValues[l] = 0
+
+        #imgui.same_line() 
+        imgui.text("X: %d, Y: %d" % (CSVxyValues[0],CSVxyValues[1]))
+        CSVButtonclicked = imgui.button("Save")
+    #implementation for csv import
+    if imgui.is_item_hovered():
+        imgui.set_tooltip("Please save the changes or they won't be passed")
+    imgui.end()
+
+    global PointSize
+    global PointsColor
+    imgui.begin("- Points - Give Points size and color")
+    changed, PointSize = imgui.drag_float("Point Size", PointSize, 0.02, 0.1, 40, "%.1f")
+    if (changed):
+        gl.glPointSize(PointSize)
+    imgui.text("PointSize: %s" % (PointSize))
+    imgui.text("")
+
+    changed, PointsColor = imgui.color_edit3("Color", *PointsColor)
+    
+    imgui.end()
+
 
 class IndexedConverter():
     
@@ -99,6 +202,82 @@ class IndexedConverter():
 
         return iVertices, iColors, iIndices, iNormals;
 
+def f_Z (x,y):
+    global f_x_y
+    d= {}
+    d['x'] = x
+    d['y'] = y
+    z = eval(f_x_y,d)
+    return z
+
+
+COLOR_FRAG = """
+    #version 410
+
+    in vec4 color;
+    out vec4 outputColor;
+
+    void main()
+    {
+        outputColor = color;
+        //outputColor = vec4(0.1, 0.1, 0.1, 1);
+    }
+"""
+COLOR_VERT_MVP = """
+    #version 410
+
+    layout (location=0) in vec4 vPosition;
+    layout (location=1) in vec4 vColor;
+
+    out     vec4 color;
+    uniform mat4 modelViewProj;
+    uniform vec4 extColor;
+
+    void main()
+    {
+
+        gl_Position = modelViewProj * vPosition;
+        color = extColor;
+    }
+"""
+class GameObjectEntity_Point(Entity):
+    def __init__(self, name=None, type=None, id=None, primitiveID = gl.GL_LINES) -> None:
+        super().__init__(name, type, id)
+
+        # Gameobject basic properties
+        self._color          = [1, 0.5, 0.2, 1.0] # this will be used as a uniform var
+        # Create basic components of a primitive object
+        self.trans          = BasicTransform(name="trans", trs=util.identity())
+        self.mesh           = RenderMesh(name="mesh")
+        # self.shaderDec      = ShaderGLDecorator(Shader(vertex_source=Shader.VERT_PHONG_MVP, fragment_source=Shader.FRAG_PHONG))
+        self.shaderDec      = ShaderGLDecorator(Shader(vertex_source= COLOR_VERT_MVP, fragment_source=COLOR_FRAG))
+        self.vArray         = VertexArray(primitive= primitiveID)
+        # Add components to entity
+        scene = Scene()
+        scene.world.createEntity(self)
+        scene.world.addComponent(self, self.trans)
+        scene.world.addComponent(self, self.mesh)
+        scene.world.addComponent(self, self.shaderDec)
+        scene.world.addComponent(self, self.vArray)
+        
+
+    @property
+    def color(self):
+        return self._color
+    @color.setter
+    def color(self, colorArray):
+        self._color = colorArray
+
+    def drawSelfGui(self, imgui):
+        changed, value = imgui.color_edit3("Color", self.color[0], self.color[1], self.color[2])
+        self.color = [value[0], value[1], value[2], 1.0]
+
+    def SetVertexAttributes(self, vertex, color, index, normals = None):
+        self.mesh.vertex_attributes.append(vertex)
+        self.mesh.vertex_attributes.append(color)
+        self.mesh.vertex_index.append(index)
+        if normals is not None:
+            self.mesh.vertex_attributes.append(normals)
 
 class GameObjectEntity(Entity):
     def __init__(self, name=None, type=None, id=None, primitiveID = gl.GL_LINES) -> None:
@@ -138,8 +317,6 @@ class GameObjectEntity(Entity):
         self.mesh.vertex_index.append(index)
         if normals is not None:
             self.mesh.vertex_attributes.append(normals)
-
-
 def TriangleSpawn(trianglename = "Triangle",p1=[0,0,0,1],p2 = [0.4,0.4,0,1],p3 = [0.8,0.0,0,1], r=0.55,g=0.55,b=0.55):
     triangle = GameObjectEntity(trianglename,primitiveID=gl.GL_TRIANGLES)
     vertices = [
@@ -187,8 +364,8 @@ def LineSpawn(linename = "Line",p1=[0,0,0,1],p2 = [0.4,0.4,0,1], r=0.7,g=0.7,b=0
     
     return line
 
-def PointSpawn(pointname = "Point",r=0.7,g=0.7,b=0.7): 
-    point = GameObjectEntity(pointname,primitiveID=gl.GL_POINTS)
+def PointSpawn(pointname = "Point",r=0.,g=1.,b=1.): 
+    point = GameObjectEntity_Point(pointname,primitiveID=gl.GL_POINTS)
     vertices = [
         
         [0, 0, 0, 1.0]
@@ -242,6 +419,11 @@ def main (imguiFlag = False):
     scene.world.addEntityChild(rootEntity, TriangleNode)
     trans7 = BasicTransform(name="trans7", trs=util.identity())
     scene.world.addComponent(TriangleNode, trans7)
+
+    SuperFunction = scene.world.createEntity(Entity("SuperFunction"))
+    scene.world.addEntityChild(rootEntity, SuperFunction)
+    trans8 = BasicTransform(name="trans8", trs=util.identity())
+    scene.world.addComponent(SuperFunction, trans8)
 
     axes = scene.world.createEntity(Entity(name="axes"))
     scene.world.addEntityChild(rootEntity, axes)
@@ -310,7 +492,7 @@ def main (imguiFlag = False):
     
     running = True
     # MAIN RENDERING LOOP
-    scene.init(imgui=True, windowWidth = 1024, windowHeight = 768, windowTitle = "pyglGA test_renderAxesTerrainEVENT", customImGUIdecorator = ImGUIecssDecorator)
+    scene.init(imgui=True, windowWidth = 1024, windowHeight = 768, windowTitle = "pyglGA test_renderAxesTerrainEVENT")#, customImGUIdecorator = ImGUIecssDecorator
     imGUIecss = scene.gContext
 
     # pre-pass scenegraph to initialise all GL context dependent geometry, shader classes
@@ -335,23 +517,23 @@ def main (imguiFlag = False):
     renderGLEventActuator = RenderGLStateSystem()
 
 
-    updateTRS = Event(name="OnUpdateTRS", id=100, value=None) #lines 255-258 contains the Scenegraph in a GUI as is it has issues.. To be fixed
-    updateBackground = Event(name="OnUpdateBackground", id=200, value=None)
-    eManager._events[updateTRS.name] = updateTRS
-    eManager._events[updateBackground.name] = updateBackground
+    #updateTRS = Event(name="OnUpdateTRS", id=100, value=None) #lines 255-258 contains the Scenegraph in a GUI as is it has issues.. To be fixed
+    #updateBackground = Event(name="OnUpdateBackground", id=200, value=None)
+    #eManager._events[updateTRS.name] = updateTRS
+    #eManager._events[updateBackground.name] = updateBackground
 
 
-    eManager._subscribers[updateTRS.name] = gGUI
-    eManager._subscribers[updateBackground.name] = gGUI
+    #eManager._subscribers[updateTRS.name] = gGUI
+    #eManager._subscribers[updateBackground.name] = gGUI
 
     eManager._subscribers['OnUpdateWireframe'] = gWindow
     eManager._actuators['OnUpdateWireframe'] = renderGLEventActuator
     eManager._subscribers['OnUpdateCamera'] = gWindow 
     eManager._actuators['OnUpdateCamera'] = renderGLEventActuator
-    # MANOS END
+    
     # Add RenderWindow to the EventManager publishers
     # eManager._publishers[updateBackground.name] = gGUI
-    eManager._publishers[updateBackground.name] = gGUI ## added
+    #eManager._publishers[updateBackground.name] = gGUI ## added
 
 
     eye = util.vec(5.0, 4.0, 3.5)
@@ -365,8 +547,7 @@ def main (imguiFlag = False):
 
     model_terrain_axes = util.translate(0.0,0.0,0.0)
     
-    #global point size integer
-    PointSize = 5    
+    
     #LISTS
     LinesList = [] 
     SplineList = []
@@ -378,39 +559,23 @@ def main (imguiFlag = False):
     toggleLineZSwitch = True
     toggleSplineSwitch = True
     togglePlatformSwitch = True
+    toggleSuperFunc = True
     #MOST USEFUL GLOBALS
     pointchild = 0
     linechild = 0
     splinechild = 0
     trianglechild =0
+    superfuncchild =0
     #ALWAYS CHANGING GLOBALS
     linechildZ = 0#used for z=0 lines
     linechildPlane = 0#used for lines that interconnect z=0 with z=1
     ChildMeadian = 0#used for median point
     i=1#used for object(points/lines) printing inside the while loop
-
-
-    if len(sys.argv) == 2:#receive data from a txt via command line
-        with open(sys.argv[1], 'r') as f:
-            next(f)#skip header
-            if(f):
-                pointListfromCSV = [tuple(map(float, i.split(','))) for i in f]
-    else:#receive csv from path
-        reader = pd.read_csv("pyGLV/examples/example_materials/PointCoordinates.csv")
-        pointListfromCSV = [tuple(x) for x in reader.values]
-
-    df = pd.DataFrame(pointListfromCSV, index=None)
-    cols = len(df.axes[1]) -2
-    xPlane = random.randint(0, cols)
-    yPlane = random.randint(0, cols)
-    #zPlane = random.randint(0, cols)
-
-    while((yPlane) == xPlane):# having x and y plane from the same csv collumn is ugly!
-        yPlane = random.randint(0, cols)
-    #while((zPlane) == xPlane or (zPlane) == yPlane):# having x and y plane from the same csv collumn is ugly!
-    #   zPlane = random.randint(0, cols)
-    zPlane = cols+1
-    
+    global pointListfromCSV
+    global xPlane
+    global yPlane
+    global zPlane
+    global PointSize
     #we split our csv based on common Z plane values and pass it to 2 lists for later use
     for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[zPlane]):
         keys.append(Zplanekey)
@@ -419,13 +584,15 @@ def main (imguiFlag = False):
         values[i].sort(key = lambda row: (row[xPlane]),reverse=False)
     
     gl.glPointSize(PointSize)
+    
     #Displays all nodes created
-    def Dispaly():
+    def Display():
         i=1
+        
         #print points
         while i<=pointchild:
             PointsNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @ PointsNode.getChild(i).trans.l2cam, mat4=True)
-            PointsNode.getChild(i).shaderDec.setUniformVariable(key='my_color', value=[1, 0, 0], float4=True) #its porpuse is to change color on my_color vertex by setting the uniform                  
+            PointsNode.getChild(i).shaderDec.setUniformVariable(key='extColor', value=[PointsColor[0], PointsColor[1], PointsColor[2], 1.0], float4=True) #its porpuse is to change color on my_color vertex by setting the uniform                  
 
             i +=1
         i = 1
@@ -462,7 +629,14 @@ def main (imguiFlag = False):
             else:
                 TriangleNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
-
+        i=1
+        #print platform
+        while i <= superfuncchild:
+            if toggleSuperFunc:
+                SuperFunction.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction.getChild(i).trans.l2cam, mat4=True)
+            else:
+                SuperFunction.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
         i=1
         scene.render_post()
     while running:
@@ -471,7 +645,7 @@ def main (imguiFlag = False):
         view =  gWindow._myCamera # updates view via the imgui
         mvp_point = projMat @ view 
         mvp_terrain_axes = projMat @ view @ model_terrain_axes
-        
+        displayGUI()
         #Toggle mechanism
         if (key.is_pressed("t")):#create points 
             toggleSwitch = not toggleSwitch
@@ -488,7 +662,7 @@ def main (imguiFlag = False):
                 for i in range(len(pointListfromCSV)):
                     pointchild += 1
                     DynamicVariable = "Point" + str(pointchild)
-                    vars()[DynamicVariable]: GameObjectEntity = PointSpawn(DynamicVariable,0,1,1)
+                    vars()[DynamicVariable]: GameObjectEntity_Point = PointSpawn(DynamicVariable,0,1,1)
                     scene.world.addEntityChild(PointsNode, vars()[DynamicVariable]) 
                     PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], pointListfromCSV[i][zPlane])
                 scene.world.traverse_visit(initUpdate, scene.world.root)
@@ -507,7 +681,7 @@ def main (imguiFlag = False):
             if(ChildMeadian == 0):
                 pointchild += 1
                 DynamicVariable = "Point" + str(pointchild)
-                vars()[DynamicVariable]: GameObjectEntity = PointSpawn(DynamicVariable,1,0,0)
+                vars()[DynamicVariable]: GameObjectEntity_Point = PointSpawn(DynamicVariable,1,0,0)
                 scene.world.addEntityChild(PointsNode, vars()[DynamicVariable])
                 ChildMeadian = pointchild
             PointsNode.getChild(ChildMeadian).trans.l2cam = util.translate(MOx, MOy, 0)
@@ -539,6 +713,7 @@ def main (imguiFlag = False):
                 toggleLineSwitch = not toggleLineSwitch
             
             time.sleep(0.15)
+        #Line
         elif (key.is_pressed("l")):
             if(linechildPlane==0 and linechildZ != 0):
                 for i in range(len(keys)):
@@ -586,38 +761,62 @@ def main (imguiFlag = False):
                 toggleSplineSwitch = not toggleSplineSwitch
             
             time.sleep(0.15)
+        #Triangle       
         elif(key.is_pressed("b")):
+            lengthoflist = 0
             if(SplineList and trianglechild==0):
-                spline1 = SplineList[0]
-                spline2 = SplineList[1]
-                x_new = np.linspace(0.2, 3, len(values[i])*6)
+                while(lengthoflist < len(SplineList) -1):
+                    lengthoflist += 1
+                    spline1 = SplineList[lengthoflist-1]
+                    spline2 = SplineList[lengthoflist]
+                    x_new = np.linspace(0.2, 3, len(values[i])*6)
 
-                y_spline1 = spline1(x_new)
-                y_spline2 = spline2(x_new)
-                z_spline1 = keys[0]
-                z_spline2 = keys[1]
-                l =0
-                while l < len(x_new) -1 :
-                    l += 1
-                    #first triangle
-                    trianglechild += 1
-                    DynamicVariable = "Triangle" + str(trianglechild)
-                    point1 = x_new[l-1], y_spline1[l-1], z_spline1, 1
-                    point2 = x_new[l], y_spline1[l], z_spline1, 1
-                    point3 = x_new[l-1], y_spline2[l-1], z_spline2, 1
-                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
-                    scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
-                    #second triangle
-                    trianglechild += 1
-                    DynamicVariable = "Triangle" + str(trianglechild)
-                    point1 = x_new[l-1], y_spline2[l-1], z_spline2, 1
-                    point2 = x_new[l], y_spline2[l], z_spline2, 1
-                    point3 = x_new[l], y_spline1[l], z_spline1, 1
-                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
-                    scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
+                    y_spline1 = spline1(x_new)
+                    y_spline2 = spline2(x_new)
+                    z_spline1 = keys[lengthoflist-1]
+                    z_spline2 = keys[lengthoflist]
+                    l =0
+                    while l < len(x_new) -1 :
+                        l += 1
+                        #first triangle
+                        trianglechild += 1
+                        DynamicVariable = "Triangle" + str(trianglechild)
+                        point1 = x_new[l-1], y_spline1[l-1], z_spline1, 1
+                        point2 = x_new[l], y_spline1[l], z_spline1, 1
+                        point3 = x_new[l-1], y_spline2[l-1], z_spline2, 1
+                        vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
+                        scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
+                        #second triangle
+                        trianglechild += 1
+                        DynamicVariable = "Triangle" + str(trianglechild)
+                        point1 = x_new[l-1], y_spline2[l-1], z_spline2, 1
+                        point2 = x_new[l], y_spline2[l], z_spline2, 1
+                        point3 = x_new[l], y_spline1[l], z_spline1, 1
+                        vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
+                        scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
                 scene.world.traverse_visit(initUpdate, scene.world.root)
             else:
                 togglePlatformSwitch = not togglePlatformSwitch
+            time.sleep(0.15)
+        #Super Function
+        elif (key.is_pressed("f")):
+            if superfuncchild != 0:
+                toggleSuperFunc = not toggleSuperFunc
+            else:
+                global FuncValues
+                l=0
+                x = np.linspace(FuncValues[0],FuncValues[1],100) 
+                y = np.linspace(FuncValues[2],FuncValues[3],100) 
+                z= f_Z(x,y)
+                while (l < len(x)-1):
+                    superfuncchild+=1
+                    l+=1
+                    DynamicVariable = "SuperFunction" + str(superfuncchild)
+                    point1 =  x[l], y[l], z[l] , 1 
+                    point2 =  x[l-1], y[l-1], z[l-1] , 1
+                    vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1, 1, 1, 0)
+                    scene.world.addEntityChild(SuperFunction, vars()[DynamicVariable])
+                scene.world.traverse_visit(initUpdate, scene.world.root)
             time.sleep(0.15)
         #QUIT button
         elif (key.is_pressed("q")):
@@ -633,7 +832,7 @@ def main (imguiFlag = False):
             PointSize -=1
             gl.glPointSize(PointSize)
             time.sleep(0.15)
-        Dispaly()
+        Display()
         
     scene.shutdown()
     
