@@ -37,6 +37,7 @@ import matplotlib.pyplot as plt
 import itertools
 import os
 import imgui
+
 """
 Common setup for all unit tests
 
@@ -58,6 +59,10 @@ root
     |                                                      trans8        mesh8      shaderdec8      vArray8
     |------------------------------------------------------|
     |                                                      |-TriangleNode
+    |                                                      |-------------|-----------|-------------|          
+    |                                                       trans7        mesh7      shaderdec7      vArray7
+    |
+    |------------------------------------------------------|-Histogram
     |                                                      |-------------|-----------|-------------|          
     |---------------------------|                          trans7        mesh7      shaderdec7      vArray7
     entityCam1,                 PointsNode,      
@@ -89,36 +94,75 @@ while((yPlane) == xPlane):# having x and y plane from the same csv collumn is ug
 #   zPlane = random.randint(0, cols)
 zPlane = cols+1
 
-#global point size integer
-PointSize = 5    
+scene = Scene()    
+rootEntity = scene.world.createEntity(Entity(name="RooT"))
+entityCam1 = scene.world.createEntity(Entity(name="entityCam1"))
+scene.world.addEntityChild(rootEntity, entityCam1)
+trans1 = scene.world.addComponent(entityCam1, BasicTransform(name="trans1", trs=util.identity()))
 
-FuncValues= 5.,5.,5.,5.
-FuncButtonclicked = 0
+entityCam2 = scene.world.createEntity(Entity(name="entityCam2"))
+scene.world.addEntityChild(entityCam1, entityCam2)
+trans2 = scene.world.addComponent(entityCam2, BasicTransform(name="trans2", trs=util.identity()))
+orthoCam = scene.world.addComponent(entityCam2, Camera(util.ortho(-100.0, 100.0, -100.0, 100.0, 2.0, 100.0), "orthoCam","Camera","500"))
+
+PointsNode = scene.world.createEntity(Entity("PointsNode"))
+scene.world.addEntityChild(scene.world.root, PointsNode)
+trans4 = BasicTransform(name="trans4", trs=util.identity())
+scene.world.addComponent(PointsNode, trans4)
+
+LinesNode = scene.world.createEntity(Entity("LinesNode"))
+scene.world.addEntityChild(rootEntity, LinesNode)
+trans5 = BasicTransform(name="trans5", trs=util.identity())
+scene.world.addComponent(LinesNode, trans5)
+
+SplineNode = scene.world.createEntity(Entity("SplineNode"))
+scene.world.addEntityChild(rootEntity, SplineNode)
+trans6 = BasicTransform(name="trans6", trs=util.identity())
+scene.world.addComponent(SplineNode, trans6)
+
+Area3D = scene.world.createEntity(Entity("TriangleNode"))
+scene.world.addEntityChild(rootEntity, Area3D)
+trans7 = BasicTransform(name="trans7", trs=util.identity())
+scene.world.addComponent(Area3D, trans7)
+
+Area2D = scene.world.createEntity(Entity("TriangleNode"))
+scene.world.addEntityChild(rootEntity, Area2D)
+trans11 = BasicTransform(name="trans11", trs=util.identity())
+scene.world.addComponent(Area2D, trans11)
+
+SuperFunction = scene.world.createEntity(Entity("SuperFunction"))
+scene.world.addEntityChild(rootEntity, SuperFunction)
+trans8 = BasicTransform(name="trans8", trs=util.identity())
+scene.world.addComponent(SuperFunction, trans8)
+
+Histogram2D = scene.world.createEntity(Entity("Histogram"))
+scene.world.addEntityChild(rootEntity, Histogram2D)
+trans9 = BasicTransform(name="trans9", trs=util.identity())
+scene.world.addComponent(Histogram2D, trans9)
+
+Histogram3D = scene.world.createEntity(Entity("Histogram"))
+scene.world.addEntityChild(rootEntity, Histogram3D)
+trans10 = BasicTransform(name="trans10", trs=util.identity())
+scene.world.addComponent(Histogram3D, trans10)
+
+axes = scene.world.createEntity(Entity(name="axes"))
+scene.world.addEntityChild(rootEntity, axes)
+axes_trans = scene.world.addComponent(axes, BasicTransform(name="axes_trans", trs=util.identity()))
+axes_mesh = scene.world.addComponent(axes, RenderMesh(name="axes_mesh"))
+
+# Systems
+transUpdate = scene.world.createSystem(TransformSystem("transUpdate", "TransformSystem", "001"))
+camUpdate = scene.world.createSystem(CameraSystem("camUpdate", "CameraUpdate", "200"))
+renderUpdate = scene.world.createSystem(RenderGLShaderSystem())
+initUpdate = scene.world.createSystem(InitGLShaderSystem())
+
+#global point size integer
+keys = []
+values = []
 
 CSVxyValues= xPlane,yPlane
 CSVButtonclicked = 0
-
-PointsColor = 0., 1., 1., 1
-f_x_y = 'x**2+x*4'
-def displayGUI():
-    """
-        displays ImGui
-    """
-    #global value
-    global FuncValues
-    global FuncButtonclicked
-    global f_x_y
-    imgui.begin("Give Function X,Y Values")
-
-    #implementation for a,b,c,d points for X,Y functions
-    imgui.text("Give a and b values for X() and c and d for Y() functions")
-    changed, FuncValues = imgui.input_float4('', *FuncValues) 
-    #imgui.same_line() 
-    imgui.text("a: %.1f, b: %.1f, c: %.1f, d: %.1f" % (FuncValues[0],FuncValues[1],FuncValues[2],FuncValues[3]))
-
-    changed, f_x_y = imgui.input_text('Amount:',f_x_y,256)
-    imgui.end()
-
+def CSV_GUI():
     global xPlane
     global yPlane
     global CSVxyValues
@@ -151,56 +195,338 @@ def displayGUI():
         imgui.set_tooltip("Please save the changes or they won't be passed")
     imgui.end()
 
+FuncValues= 0.01,0.3,1.,1.
+FuncButtonclicked = 0
+f_x_y = 'x**2+x*4'
+Func_Button =0
+superfuncchild =0
+toggleSuperFunc = True
+def Func_GUI():
+    global FuncValues
+    global FuncButtonclicked
+    global f_x_y
+    global Func_Button
+    global superfuncchild
+    global toggleSuperFunc
+    imgui.begin("Give Function X,Y Values")
+
+    #implementation for a,b,c,d points for X,Y functions
+    imgui.text("Give a and b values for X() and c and d for Y() functions")
+    changed, FuncValues = imgui.input_float4('', *FuncValues) 
+    #imgui.same_line() 
+    imgui.text("a: %.1f, b: %.1f, c: %.1f, d: %.1f" % (FuncValues[0],FuncValues[1],FuncValues[2],FuncValues[3]))
+
+    changed, f_x_y = imgui.input_text('Amount:',f_x_y,256)
+    Func_Button = imgui.button("Print Function")
+    if(Func_Button):
+        if superfuncchild != 0:
+            toggleSuperFunc = not toggleSuperFunc
+        else:
+            l=0
+            x = np.linspace(FuncValues[0],FuncValues[1],100) 
+            y = np.linspace(FuncValues[2],FuncValues[3],100) 
+            z= f_Z(x,y)
+            while (l < len(x)-1):
+                superfuncchild+=1
+                l+=1
+                DynamicVariable = "SuperFunction" + str(superfuncchild)
+                point1 =  x[l], y[l], z[l] , 1 
+                point2 =  x[l-1], y[l-1], z[l-1] , 1
+                vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1, 1, 1, 0)
+                scene.world.addEntityChild(SuperFunction, vars()[DynamicVariable])
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+    
+    imgui.end()
+
+
+Area_Diagram_Button3D = 0
+Area_Diagram_Button2D = 0
+
+SplineList = []
+togglePlatformSwitch3D = False
+togglePlatformSwitch2D = False
+
+trianglechild3D =0
+trianglechild2D =0
+
+def Area_Chart():
+    global Area_Diagram_Button3D
+    global Area_Diagram_Button2D
+
+    global SplineList
+    global keys
+    global values
+
+    global togglePlatformSwitch3D
+    global togglePlatformSwitch2D
+    global trianglechild3D
+    global trianglechild2D
+    imgui.begin("- Calculate Area 3D -")
+    imgui.text("Calculate Area 3D ")
+    Area_Diagram_Button3D = imgui.button("3D")
+    imgui.same_line() 
+    Area_Diagram_Button2D = imgui.button("2D")
+
+    if(Area_Diagram_Button3D):
+        SplineList.clear()
+        for i in range(len(keys)):
+            if(values[i]):
+                arr = np.array(values[i])
+                xPointToSpline = arr[:,xPlane]
+                yPointToSpline = arr[:,yPlane]
+                
+                f = CubicSpline(xPointToSpline,yPointToSpline, bc_type='natural')
+                x_new = np.linspace(0.2, 3, len(values[i])*6)
+                SplineList.append(f)#pass the spline functions to a list for later use
+        lengthoflist = 0
+        #get random rgb color for the platform
+        r = random.uniform(0, 1.0)
+        g = random.uniform(0, 1.0)
+        b = random.uniform(0, 1.0)
+        while(lengthoflist < len(SplineList) -1):
+            lengthoflist += 1
+            spline1 = SplineList[lengthoflist-1]
+            spline2 = SplineList[lengthoflist]
+            x_new = np.linspace(0.2, 3, len(values[i])*6)
+
+            y_spline1 = spline1(x_new)
+            y_spline2 = spline2(x_new)
+            z_spline1 = keys[lengthoflist-1]
+            z_spline2 = keys[lengthoflist]
+            l =0
+            if(trianglechild3D==0):#SplineList and trianglechild3D==0
+                while l < len(x_new) -1 :
+                    l += 1
+                    #first triangle
+                    trianglechild3D += 1
+                    DynamicVariable = "Triangle" + str(trianglechild3D)
+                    point1 = x_new[l-1], y_spline1[l-1], z_spline1, 1
+                    point2 = x_new[l], y_spline1[l], z_spline1, 1
+                    point3 = x_new[l-1], y_spline2[l-1], z_spline2, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,r ,g, b)
+                    scene.world.addEntityChild(Area3D, vars()[DynamicVariable])
+                    #second triangle
+                    trianglechild3D += 1
+                    DynamicVariable = "Triangle" + str(trianglechild3D)
+                    point1 = x_new[l-1], y_spline2[l-1], z_spline2, 1
+                    point2 = x_new[l], y_spline2[l], z_spline2, 1
+                    point3 = x_new[l], y_spline1[l], z_spline1, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,r ,g, b)
+                    scene.world.addEntityChild(Area3D, vars()[DynamicVariable])
+                scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            togglePlatformSwitch3D = not togglePlatformSwitch3D
+    elif(Area_Diagram_Button2D):
+        SplineList.clear()
+        for i in range(len(keys)):
+            if(values[i]):
+                arr = np.array(values[i])
+                xPointToSpline = arr[:,xPlane]
+                yPointToSpline = arr[:,yPlane]
+                
+                f = CubicSpline(xPointToSpline,yPointToSpline, bc_type='natural')
+                x_new = np.linspace(0.2, 3, len(values[i])*6)
+                SplineList.append(f)#pass the spline functions to a list for later use
+        lengthoflist = 0
+        #get random rgb color for the platform
+        r = random.uniform(0, 1.0)
+        g = random.uniform(0, 1.0)
+        b = random.uniform(0, 1.0)
+        while(lengthoflist < len(SplineList) -1):
+            lengthoflist += 1
+            spline1 = SplineList[lengthoflist-1]
+            spline2 = SplineList[lengthoflist]
+            x_new = np.linspace(0.2, 3, len(values[i])*6)
+
+            y_spline1 = spline1(x_new)
+            y_spline2 = spline2(x_new)
+            z_spline1 = keys[lengthoflist-1]
+            z_spline2 = keys[lengthoflist]
+            l =0
+            if(trianglechild2D==0):#SplineList and trianglechild2D==0
+                while l < len(x_new) -1 :
+                    l += 1
+                    #first triangle
+                    trianglechild2D += 1
+                    DynamicVariable = "Triangle" + str(trianglechild2D)
+                    point1 = x_new[l-1], y_spline1[l-1], 0, 1
+                    point2 = x_new[l], y_spline1[l], 0, 1
+                    point3 = x_new[l-1], y_spline2[l-1], 0, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,r ,g, b)
+                    scene.world.addEntityChild(Area2D, vars()[DynamicVariable])
+                    #second triangle
+                    trianglechild2D += 1
+                    DynamicVariable = "Triangle" + str(trianglechild2D)
+                    point1 = x_new[l-1], y_spline2[l-1], 0, 1
+                    point2 = x_new[l], y_spline2[l], 0, 1
+                    point3 = x_new[l], y_spline1[l], 0, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,r ,g, b)
+                    scene.world.addEntityChild(Area2D, vars()[DynamicVariable])
+                scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            togglePlatformSwitch2D = not togglePlatformSwitch2D
+    #implementation for csv import
+    if imgui.is_item_hovered():
+        imgui.set_tooltip("Please save the changes or they won't be passed")
+    imgui.end()
+
+
+Scatterplot_Button = 0
+Scatterplot_Button2D =0
+Scatterplot_Button3D =0
+toggle_scatterplot_Button = 0
+toggle_scatterplot = True
+pointchild = 0
+PointSize = 5    
+PointsColor = 0., 1., 1., 1
+def ScatterPlot_Chart():
+    global pointchild
+    global Scatterplot_Button3D
+    global Scatterplot_Button2D
+    global toggle_scatterplot_Button
+    global toggle_scatterplot
+
+    imgui.begin("- Calculate Scatterplot -")
+    imgui.text("Scatterplot ")
+    Scatterplot_Button2D = imgui.button("2D Scatterplot")
+    imgui.same_line() 
+    Scatterplot_Button3D = imgui.button("3D Scatterplot")
+
+    if (Scatterplot_Button2D or Scatterplot_Button3D):
+        if (pointchild == 0 ):
+            for i in range(len(pointListfromCSV)):
+                pointchild += 1
+                DynamicVariable = "Point" + str(pointchild)
+                vars()[DynamicVariable]: GameObjectEntity_Point = PointSpawn(DynamicVariable,0,1,1)
+                scene.world.addEntityChild(PointsNode, vars()[DynamicVariable]) 
+                PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], pointListfromCSV[i][zPlane])
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+
+        pointchild = 0
+        for i in range(len(pointListfromCSV)):
+            pointchild += 1
+            if Scatterplot_Button3D:
+                PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], pointListfromCSV[i][zPlane])
+            elif Scatterplot_Button2D:
+                PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], 0)
+        
+        time.sleep(0.15)
+
+    if imgui.is_item_hovered():
+        imgui.set_tooltip("Please save the changes or they won't be passed")
+
+    #size, color of scaterplot(points)
     global PointSize
     global PointsColor
-    imgui.begin("- Points - Give Points size and color")
     changed, PointSize = imgui.drag_float("Point Size", PointSize, 0.02, 0.1, 40, "%.1f")
     if (changed):
         gl.glPointSize(PointSize)
     imgui.text("PointSize: %s" % (PointSize))
     imgui.text("")
-
     changed, PointsColor = imgui.color_edit3("Color", *PointsColor)
-    
+
+    toggle_scatterplot_Button = imgui.button("Toggle Scaterplot On/Off")
+    if (toggle_scatterplot_Button):
+        toggle_scatterplot = not toggle_scatterplot
+        
     imgui.end()
 
 
-class IndexedConverter():
-    
-    # Assumes triangulated buffers. Produces indexed results that support
-    # normals as well.
-    def Convert(self, vertices, colors, indices, produceNormals=True):
+histogramchild2D = 0
+histogramchild3D = 0
+Histogram_Button2D = 0
+Histogram_Button3D = 0
+detailedHistogram = 10
+toggle2DHistogram = True
+toggle3DHistogram = True
+def Histogram_Chart():
+    global histogramchild2D
+    global histogramchild3D
 
-        iVertices = [];
-        iColors = [];
-        iNormals = [];
-        iIndices = [];
-        for i in range(0, len(indices), 3):
-            iVertices.append(vertices[indices[i]]);
-            iVertices.append(vertices[indices[i + 1]]);
-            iVertices.append(vertices[indices[i + 2]]);
-            iColors.append(colors[indices[i]]);
-            iColors.append(colors[indices[i + 1]]);
-            iColors.append(colors[indices[i + 2]]);
-            
+    global Histogram_Button2D
+    global Histogram_Button3D
+    global detailedHistogram
+    global toggle2DHistogram
+    global toggle3DHistogram
+    imgui.begin("- Calculate Histogram -")
+    imgui.text("Histogram ")
+    Histogram_Button2D = imgui.button("2D Histogram")
+    imgui.same_line() 
+    Histogram_Button3D = imgui.button("3D Histogram")
+    changed, detailedHistogram = imgui.input_int('', detailedHistogram) 
+    bins = np.linspace(0, 3, detailedHistogram)
+ 
+    if (Histogram_Button2D):
+        arrayfromtupple = np.asarray(pointListfromCSV)
+        HistogramY,HistogramX = np.histogram(arrayfromtupple[:,xPlane], bins )#= [0, 0.4, 0.8, 1.2, 1.6,2.0, 2.4, 2.8]
+        i=0
+        if(histogramchild2D == 0):
+            while i < len(HistogramX) -1:
+                r = random.uniform(0, 1.0)
+                g = random.uniform(0, 1.0)
+                b = random.uniform(0, 1.0)
+                i+=1
+                histogramchild2D+=1
+                DynamicVariable = "Cube" + str(histogramchild2D)
 
-            iIndices.append(i);
-            iIndices.append(i + 1);
-            iIndices.append(i + 2);
+                point1 = HistogramX[i-1], 0, 0
+                point2 = HistogramX[i-1], HistogramY[i-1], 0
+                point3 = HistogramX[i], HistogramY[i-1], 0
+                point4 = HistogramX[i], 0, 0              
+                point5 = HistogramX[i-1], 0, 0
+                point6 = HistogramX[i-1], HistogramY[i-1], 0
+                point7 = HistogramX[i], HistogramY[i-1], 0
+                point8 = HistogramX[i], 0, 0
+                
+                vars()[DynamicVariable]: GameObjectEntity = CubeSpawn(DynamicVariable,point1,point2,point3,point4,point5,point6,point7,point8,r,g,b)
+                scene.world.addEntityChild(Histogram2D, vars()[DynamicVariable])
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            toggle2DHistogram = not toggle2DHistogram
+    elif(Histogram_Button3D):
+        if(histogramchild3D == 0):
+            for x in range(len(keys)):
+                if(values[x]):
+                    arr = np.array(values[x])
+                HistogramY,HistogramX = np.histogram(arr[:,xPlane], bins )#= [0, 0.4, 0.8, 1.2, 1.6,2.0, 2.4, 2.8]
+                i=0
+                while i < len(HistogramX) -1:
+                    r = random.uniform(0, 1.0)
+                    g = random.uniform(0, 1.0)
+                    b = random.uniform(0, 1.0)
+                    i+=1
+                    histogramchild3D+=1
+                    DynamicVariable = "Cube" + str(histogramchild3D)
 
-        if produceNormals:
-            for i in range(0, len(indices), 3):
-                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
-                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
-                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+                    point1 = HistogramX[i-1], 0, keys[x]+1
+                    point2 = HistogramX[i-1], HistogramY[i-1], keys[x]+1
+                    point3 = HistogramX[i], HistogramY[i-1], keys[x]+1
+                    point4 = HistogramX[i], 0, keys[x]+1              
+                    point5 = HistogramX[i-1], 0, keys[x]
+                    point6 = HistogramX[i-1], HistogramY[i-1], keys[x]
+                    point7 = HistogramX[i], HistogramY[i-1], keys[x]
+                    point8 = HistogramX[i], 0, keys[x]
+                    
+                    vars()[DynamicVariable]: GameObjectEntity = CubeSpawn(DynamicVariable,point1,point2,point3,point4,point5,point6,point7,point8,r,g,b)
+                    scene.world.addEntityChild(Histogram3D, vars()[DynamicVariable])
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            toggle3DHistogram = not toggle3DHistogram
+        
+    imgui.end()
 
-        iVertices = np.array( iVertices, dtype=np.float32 )
-        iColors   = np.array( iColors,   dtype=np.float32 )
-        iIndices  = np.array( iIndices,  dtype=np.uint32  )
 
-        iNormals  = np.array( iNormals,  dtype=np.float32 )
+def displayGUI():
+    """
+        displays ImGui
+    """
+    #global value
+    Func_GUI()
+    CSV_GUI()
+    Area_Chart()
+    ScatterPlot_Chart()
+    Histogram_Chart()
 
-        return iVertices, iColors, iIndices, iNormals;
 
 def f_Z (x,y):
     global f_x_y
@@ -240,6 +566,43 @@ COLOR_VERT_MVP = """
         color = extColor;
     }
 """
+
+class IndexedConverter():
+    
+    # Assumes triangulated buffers. Produces indexed results that support
+    # normals as well.
+    def Convert(self, vertices, colors, indices, produceNormals=True):
+
+        iVertices = [];
+        iColors = [];
+        iNormals = [];
+        iIndices = [];
+        for i in range(0, len(indices), 3):
+            iVertices.append(vertices[indices[i]]);
+            iVertices.append(vertices[indices[i + 1]]);
+            iVertices.append(vertices[indices[i + 2]]);
+            iColors.append(colors[indices[i]]);
+            iColors.append(colors[indices[i + 1]]);
+            iColors.append(colors[indices[i + 2]]);
+            
+
+            iIndices.append(i);
+            iIndices.append(i + 1);
+            iIndices.append(i + 2);
+
+        if produceNormals:
+            for i in range(0, len(indices), 3):
+                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+                iNormals.append(util.calculateNormals(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]));
+
+        iVertices = np.array( iVertices, dtype=np.float32 )
+        iColors   = np.array( iColors,   dtype=np.float32 )
+        iIndices  = np.array( iIndices,  dtype=np.uint32  )
+
+        iNormals  = np.array( iNormals,  dtype=np.float32 )
+
+        return iVertices, iColors, iIndices, iNormals;
 class GameObjectEntity_Point(Entity):
     def __init__(self, name=None, type=None, id=None, primitiveID = gl.GL_LINES) -> None:
         super().__init__(name, type, id)
@@ -280,6 +643,7 @@ class GameObjectEntity_Point(Entity):
             self.mesh.vertex_attributes.append(normals)
 
 class GameObjectEntity(Entity):
+
     def __init__(self, name=None, type=None, id=None, primitiveID = gl.GL_LINES) -> None:
         super().__init__(name, type, id)
 
@@ -317,6 +681,43 @@ class GameObjectEntity(Entity):
         self.mesh.vertex_index.append(index)
         if normals is not None:
             self.mesh.vertex_attributes.append(normals)
+
+def CubeSpawn(cubename = "Cube",p1=[-0.5, -0.5, 0.5, 1.0],p2 = [-0.5, 0.5, 0.5, 1.0],p3 = [0.5, 0.5, 0.5, 1.0]
+, p4 = [0.5, -0.5, 0.5, 1.0], p5=[-0.5, -0.5, -0.5, 1.0], p6=[-0.5, 0.5, -0.5, 1.0], p7=[0.5, 0.5, -0.5, 1.0], p8=[0.5, -0.5, -0.5, 1.0], r=0.55,g=0.55,b=0.55): 
+    cube = GameObjectEntity(cubename, primitiveID=gl.GL_TRIANGLES)
+    vertices = [
+        p1,p2,p3,p4,p5,p6,p7,p8        
+    ]
+    colors = [
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0],
+        [r, g, b, 1.0]                
+    ]
+    
+    #index arrays for above vertex Arrays
+    indices = np.array(
+        (
+            1,0,3, 1,3,2, 
+            2,3,7, 2,7,6,
+            3,0,4, 3,4,7,
+            6,5,1, 6,1,2,
+            4,5,6, 4,6,7,
+            5,4,0, 5,0,1
+        ),
+        dtype=np.uint32
+    ) #rhombus out of two triangles
+
+    #vertices, colors, indices, normals = IndexedConverter().Convert(vertices, colors, indices, produceNormals=True);
+    cube.SetVertexAttributes(vertices, colors, indices, None)
+    
+    return cube
+
+
 def TriangleSpawn(trianglename = "Triangle",p1=[0,0,0,1],p2 = [0.4,0.4,0,1],p3 = [0.8,0.0,0,1], r=0.55,g=0.55,b=0.55):
     triangle = GameObjectEntity(trianglename,primitiveID=gl.GL_TRIANGLES)
     vertices = [
@@ -387,49 +788,6 @@ def PointSpawn(pointname = "Point",r=0.,g=1.,b=1.):
     return point
 
 def main (imguiFlag = False):
-    scene = Scene()    
-
-    # Scenegraph with Entities, Components
-    rootEntity = scene.world.createEntity(Entity(name="RooT"))
-    entityCam1 = scene.world.createEntity(Entity(name="entityCam1"))
-    scene.world.addEntityChild(rootEntity, entityCam1)
-    trans1 = scene.world.addComponent(entityCam1, BasicTransform(name="trans1", trs=util.identity()))
-
-    entityCam2 = scene.world.createEntity(Entity(name="entityCam2"))
-    scene.world.addEntityChild(entityCam1, entityCam2)
-    trans2 = scene.world.addComponent(entityCam2, BasicTransform(name="trans2", trs=util.identity()))
-    orthoCam = scene.world.addComponent(entityCam2, Camera(util.ortho(-100.0, 100.0, -100.0, 100.0, 2.0, 100.0), "orthoCam","Camera","500"))
-
-    PointsNode = scene.world.createEntity(Entity("PointsNode"))
-    scene.world.addEntityChild(scene.world.root, PointsNode)
-    trans4 = BasicTransform(name="trans4", trs=util.identity())
-    scene.world.addComponent(PointsNode, trans4)
-    
-    LinesNode = scene.world.createEntity(Entity("LinesNode"))
-    scene.world.addEntityChild(rootEntity, LinesNode)
-    trans5 = BasicTransform(name="trans5", trs=util.identity())
-    scene.world.addComponent(LinesNode, trans5)
-
-    SplineNode = scene.world.createEntity(Entity("SplineNode"))
-    scene.world.addEntityChild(rootEntity, SplineNode)
-    trans6 = BasicTransform(name="trans6", trs=util.identity())
-    scene.world.addComponent(SplineNode, trans6)
-
-    TriangleNode = scene.world.createEntity(Entity("TriangleNode"))
-    scene.world.addEntityChild(rootEntity, TriangleNode)
-    trans7 = BasicTransform(name="trans7", trs=util.identity())
-    scene.world.addComponent(TriangleNode, trans7)
-
-    SuperFunction = scene.world.createEntity(Entity("SuperFunction"))
-    scene.world.addEntityChild(rootEntity, SuperFunction)
-    trans8 = BasicTransform(name="trans8", trs=util.identity())
-    scene.world.addComponent(SuperFunction, trans8)
-
-    axes = scene.world.createEntity(Entity(name="axes"))
-    scene.world.addEntityChild(rootEntity, axes)
-    axes_trans = scene.world.addComponent(axes, BasicTransform(name="axes_trans", trs=util.identity()))
-    axes_mesh = scene.world.addComponent(axes, RenderMesh(name="axes_mesh"))
-
     #Colored Axes
     vertexAxes = np.array([
         [0.0, 0.0, 0.0, 1.0],
@@ -449,7 +807,7 @@ def main (imguiFlag = False):
     ], dtype=np.float32)
 
     #index arrays for above vertex Arrays
-    index = np.array((0,1,2), np.uint32) #simple triangle
+    #index = np.array((0,1,2), np.uint32) #simple triangle
     indexAxes = np.array((0,1,2,3,4,5), np.uint32) #3 simple colored Axes as R,G,B lines
 
     # Systems
@@ -536,7 +894,7 @@ def main (imguiFlag = False):
     #eManager._publishers[updateBackground.name] = gGUI ## added
 
 
-    eye = util.vec(5.0, 4.0, 3.5)
+    eye = util.vec(1.2, 4.34, 6.1)
     target = util.vec(0.0, 0.0, 0.0)
     up = util.vec(0.0, 1.0, 0.0)
     view = util.lookat(eye, target, up)
@@ -550,32 +908,43 @@ def main (imguiFlag = False):
     
     #LISTS
     LinesList = [] 
-    SplineList = []
-    keys = []
-    values = []
+
     #LISTS
     toggleSwitch = True
     toggleLineSwitch = True
     toggleLineZSwitch = True
-    toggleSplineSwitch = True
-    togglePlatformSwitch = True
-    toggleSuperFunc = True
+
     #MOST USEFUL GLOBALS
-    pointchild = 0
     linechild = 0
-    splinechild = 0
-    trianglechild =0
-    superfuncchild =0
     #ALWAYS CHANGING GLOBALS
     linechildZ = 0#used for z=0 lines
     linechildPlane = 0#used for lines that interconnect z=0 with z=1
     ChildMeadian = 0#used for median point
-    i=1#used for object(points/lines) printing inside the while loop
     global pointListfromCSV
     global xPlane
     global yPlane
     global zPlane
     global PointSize
+    global values
+    global keys
+
+    global  pointchild
+    global toggle_scatterplot
+
+    global SplineList
+
+    global trianglechild3D
+    global togglePlatformSwitch3D
+
+    global superfuncchild
+    global toggleSuperFunc
+
+    global histogramchild2D
+    global histogramchild3D
+    global toggle2DHistogram
+    global toggle3DHistogram
+
+
     #we split our csv based on common Z plane values and pass it to 2 lists for later use
     for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[zPlane]):
         keys.append(Zplanekey)
@@ -584,16 +953,16 @@ def main (imguiFlag = False):
         values[i].sort(key = lambda row: (row[xPlane]),reverse=False)
     
     gl.glPointSize(PointSize)
-    
     #Displays all nodes created
     def Display():
         i=1
-        
         #print points
         while i<=pointchild:
-            PointsNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @ PointsNode.getChild(i).trans.l2cam, mat4=True)
-            PointsNode.getChild(i).shaderDec.setUniformVariable(key='extColor', value=[PointsColor[0], PointsColor[1], PointsColor[2], 1.0], float4=True) #its porpuse is to change color on my_color vertex by setting the uniform                  
-
+            if(toggle_scatterplot):
+                PointsNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @ PointsNode.getChild(i).trans.l2cam, mat4=True)
+                PointsNode.getChild(i).shaderDec.setUniformVariable(key='extColor', value=[PointsColor[0], PointsColor[1], PointsColor[2], 1.0], float4=True) #its porpuse is to change color on my_color vertex by setting the uniform                  
+            else:
+                PointsNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i +=1
         i = 1
         #print Lines
@@ -613,29 +982,44 @@ def main (imguiFlag = False):
 
             i+=1
         i=1
-        #print Splines
-        while i <= splinechild:
-            if(toggleSplineSwitch):
-                SplineNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SplineNode.getChild(i).trans.l2cam, mat4=True)
+        #print Area3D
+        while i <= trianglechild3D:
+            if togglePlatformSwitch3D:
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Area3D.getChild(i).trans.l2cam, mat4=True)
             else:
-                SplineNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
-            i+=1
-            
-        i=1
-        #print platform
-        while i <= trianglechild:
-            if togglePlatformSwitch:
-                TriangleNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @TriangleNode.getChild(i).trans.l2cam, mat4=True)
-            else:
-                TriangleNode.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
         i=1
-        #print platform
+        #print Area2D
+        while i <= trianglechild2D:
+            if togglePlatformSwitch2D:
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Area2D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        #print SuperFunction
         while i <= superfuncchild:
             if toggleSuperFunc:
                 SuperFunction.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction.getChild(i).trans.l2cam, mat4=True)
             else:
                 SuperFunction.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        #print Histogram2D
+        while i<= histogramchild2D:
+            if(toggle2DHistogram):
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Histogram2D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        #print Histogram3D
+        while i<= histogramchild3D:
+            if(toggle3DHistogram):
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Histogram3D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
         i=1
         scene.render_post()
@@ -658,15 +1042,6 @@ def main (imguiFlag = False):
             terrain_shader.setUniformVariable(key='modelViewProj', value=None, mat4= True)
         #Print Points Mechanism
         if (key.is_pressed("r")):#create points 
-            if (pointchild == 0 ):
-                for i in range(len(pointListfromCSV)):
-                    pointchild += 1
-                    DynamicVariable = "Point" + str(pointchild)
-                    vars()[DynamicVariable]: GameObjectEntity_Point = PointSpawn(DynamicVariable,0,1,1)
-                    scene.world.addEntityChild(PointsNode, vars()[DynamicVariable]) 
-                    PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], pointListfromCSV[i][zPlane])
-                scene.world.traverse_visit(initUpdate, scene.world.root)
-            
             time.sleep(0.15)
         #Print Median Point Mechanism
         elif (key.is_pressed("m")):
@@ -733,90 +1108,9 @@ def main (imguiFlag = False):
                 toggleLineZSwitch = not toggleLineZSwitch         
                 
             time.sleep(0.15)
-        #print spline
-        elif (key.is_pressed("e")):
-            if(splinechild ==0):
-                for i in range(len(keys)):
-                    if(values[i]):
-                        arr = np.array(values[i])
-                        xPointToSpline = arr[:,xPlane]
-                        yPointToSpline = arr[:,yPlane]
-                        
-                        f = CubicSpline(xPointToSpline,yPointToSpline, bc_type='natural')
-                        x_new = np.linspace(0.2, 3, len(values[i])*6)
-                        y_new = f(x_new)
-                        z_new = keys[i]
-                        l =0
-                        while l < len(x_new) -1 :
-                            splinechild += 1
-                            l += 1
-                            DynamicVariable = "Spline" + str(splinechild)
-                            point1 = x_new[l], y_new[l], z_new, 1
-                            point2 = x_new[l-1], y_new[l-1], z_new, 1  
-                            vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1,0,1,0)
-                            scene.world.addEntityChild(SplineNode, vars()[DynamicVariable])
-                        scene.world.traverse_visit(initUpdate, scene.world.root)
-                        SplineList.append(f)#pass the spline functions to a list for later use
-            else:
-                toggleSplineSwitch = not toggleSplineSwitch
-            
-            time.sleep(0.15)
-        #Triangle       
-        elif(key.is_pressed("b")):
-            lengthoflist = 0
-            if(SplineList and trianglechild==0):
-                while(lengthoflist < len(SplineList) -1):
-                    lengthoflist += 1
-                    spline1 = SplineList[lengthoflist-1]
-                    spline2 = SplineList[lengthoflist]
-                    x_new = np.linspace(0.2, 3, len(values[i])*6)
-
-                    y_spline1 = spline1(x_new)
-                    y_spline2 = spline2(x_new)
-                    z_spline1 = keys[lengthoflist-1]
-                    z_spline2 = keys[lengthoflist]
-                    l =0
-                    while l < len(x_new) -1 :
-                        l += 1
-                        #first triangle
-                        trianglechild += 1
-                        DynamicVariable = "Triangle" + str(trianglechild)
-                        point1 = x_new[l-1], y_spline1[l-1], z_spline1, 1
-                        point2 = x_new[l], y_spline1[l], z_spline1, 1
-                        point3 = x_new[l-1], y_spline2[l-1], z_spline2, 1
-                        vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
-                        scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
-                        #second triangle
-                        trianglechild += 1
-                        DynamicVariable = "Triangle" + str(trianglechild)
-                        point1 = x_new[l-1], y_spline2[l-1], z_spline2, 1
-                        point2 = x_new[l], y_spline2[l], z_spline2, 1
-                        point3 = x_new[l], y_spline1[l], z_spline1, 1
-                        vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3)
-                        scene.world.addEntityChild(TriangleNode, vars()[DynamicVariable])
-                scene.world.traverse_visit(initUpdate, scene.world.root)
-            else:
-                togglePlatformSwitch = not togglePlatformSwitch
-            time.sleep(0.15)
         #Super Function
         elif (key.is_pressed("f")):
-            if superfuncchild != 0:
-                toggleSuperFunc = not toggleSuperFunc
-            else:
-                global FuncValues
-                l=0
-                x = np.linspace(FuncValues[0],FuncValues[1],100) 
-                y = np.linspace(FuncValues[2],FuncValues[3],100) 
-                z= f_Z(x,y)
-                while (l < len(x)-1):
-                    superfuncchild+=1
-                    l+=1
-                    DynamicVariable = "SuperFunction" + str(superfuncchild)
-                    point1 =  x[l], y[l], z[l] , 1 
-                    point2 =  x[l-1], y[l-1], z[l-1] , 1
-                    vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1, 1, 1, 0)
-                    scene.world.addEntityChild(SuperFunction, vars()[DynamicVariable])
-                scene.world.traverse_visit(initUpdate, scene.world.root)
+            
             time.sleep(0.15)
         #QUIT button
         elif (key.is_pressed("q")):
