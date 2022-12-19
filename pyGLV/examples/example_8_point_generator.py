@@ -82,17 +82,23 @@ else:#receive csv from path
     reader = pd.read_csv("pyGLV/examples/example_materials/PointCoordinates.csv")
     pointListfromCSV = [tuple(x) for x in reader.values]
 
+
+
 df = pd.DataFrame(pointListfromCSV, index=None)
 cols = len(df.axes[1]) -2
 xPlane = random.randint(0, cols)
 yPlane = random.randint(0, cols)
+
+reader2 = pd.read_csv("pyGLV/examples/example_materials/PointCoordinatesZaxis.csv")
+pointListfromCSVZaxis = [tuple(x) for x in reader2.values]
+dfz =pd.DataFrame(pointListfromCSVZaxis, index=None)
+zcols = len(dfz.axes[1])
+zPlane = 0
 #zPlane = random.randint(0, cols)
 
 while((yPlane) == xPlane):# having x and y plane from the same csv collumn is ugly!
     yPlane = random.randint(0, cols)
-#while((zPlane) == xPlane or (zPlane) == yPlane):# having x and y plane from the same csv collumn is ugly!
-#   zPlane = random.randint(0, cols)
-zPlane = cols+1
+
 
 scene = Scene()    
 rootEntity = scene.world.createEntity(Entity(name="RooT"))
@@ -130,10 +136,15 @@ scene.world.addEntityChild(rootEntity, Area2D)
 trans11 = BasicTransform(name="trans11", trs=util.identity())
 scene.world.addComponent(Area2D, trans11)
 
-SuperFunction = scene.world.createEntity(Entity("SuperFunction"))
-scene.world.addEntityChild(rootEntity, SuperFunction)
+SuperFunction2D = scene.world.createEntity(Entity("SuperFunction"))
+scene.world.addEntityChild(rootEntity, SuperFunction2D)
 trans8 = BasicTransform(name="trans8", trs=util.identity())
-scene.world.addComponent(SuperFunction, trans8)
+scene.world.addComponent(SuperFunction2D, trans8)
+
+SuperFunction3D = scene.world.createEntity(Entity("SuperFunction"))
+scene.world.addEntityChild(rootEntity, SuperFunction3D)
+trans12 = BasicTransform(name="trans12", trs=util.identity())
+scene.world.addComponent(SuperFunction3D, trans12)
 
 Histogram2D = scene.world.createEntity(Entity("Histogram"))
 scene.world.addEntityChild(rootEntity, Histogram2D)
@@ -144,6 +155,36 @@ Histogram3D = scene.world.createEntity(Entity("Histogram"))
 scene.world.addEntityChild(rootEntity, Histogram3D)
 trans10 = BasicTransform(name="trans10", trs=util.identity())
 scene.world.addComponent(Histogram3D, trans10)
+
+Ravdogram2D = scene.world.createEntity(Entity("Ravdogram"))
+scene.world.addEntityChild(rootEntity, Ravdogram2D)
+trans13 = BasicTransform(name="trans13", trs=util.identity())
+scene.world.addComponent(Ravdogram2D, trans13)
+
+Ravdogram3D = scene.world.createEntity(Entity("Ravdogram"))
+scene.world.addEntityChild(rootEntity, Ravdogram3D)
+trans14 = BasicTransform(name="trans14", trs=util.identity())
+scene.world.addComponent(Ravdogram3D, trans14)
+
+LSR2D = scene.world.createEntity(Entity("LSR"))
+scene.world.addEntityChild(rootEntity, LSR2D)
+trans15 = BasicTransform(name="trans15", trs=util.identity())
+scene.world.addComponent(LSR2D, trans15)
+
+LSR3D = scene.world.createEntity(Entity("LSR"))
+scene.world.addEntityChild(rootEntity, LSR3D)
+trans16 = BasicTransform(name="trans16", trs=util.identity())
+scene.world.addComponent(LSR3D, trans16)
+
+Pie2D = scene.world.createEntity(Entity("Pie"))
+scene.world.addEntityChild(rootEntity, Pie2D)
+trans17 = BasicTransform(name="trans17", trs=util.identity())
+scene.world.addComponent(Pie2D, trans17)
+
+Pie3D = scene.world.createEntity(Entity("Pie"))
+scene.world.addEntityChild(rootEntity, Pie3D)
+trans18 = BasicTransform(name="trans18", trs=util.identity())
+scene.world.addComponent(Pie3D, trans18)
 
 axes = scene.world.createEntity(Entity(name="axes"))
 scene.world.addEntityChild(rootEntity, axes)
@@ -160,11 +201,12 @@ initUpdate = scene.world.createSystem(InitGLShaderSystem())
 keys = []
 values = []
 
-CSVxyValues= xPlane,yPlane
+CSVxyValues= xPlane,yPlane,zPlane
 CSVButtonclicked = 0
 def CSV_GUI():
     global xPlane
     global yPlane
+    global zPlane
     global CSVxyValues
     global CSVButtonclicked
 
@@ -172,70 +214,142 @@ def CSV_GUI():
     if(CSVButtonclicked):
         imgui.same_line() 
 
-        imgui.text("X: %d, Y: %d" % (CSVxyValues[0],CSVxyValues[1]))
+        imgui.text("X: %d, Y: %d, Z: %d" % (CSVxyValues[0],CSVxyValues[1],CSVxyValues[2]))
         xPlane = CSVxyValues[0]
         yPlane = CSVxyValues[1]
+        zPlane = CSVxyValues[2]
         CSVButtonclicked = imgui.button("change")
         CSVButtonclicked = (CSVButtonclicked - 1) * (CSVButtonclicked - 1)
+
+        #we split our csv based on common Z plane values and pass it to 2 lists for later use
+        keys.clear()
+        values.clear()
+        for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[7]):
+            keys.append(Zplanekey)
+            values.append(list(value))
+        for i in range(len(keys)):
+            values[i].sort(key = lambda row: (row[xPlane]),reverse=False)
     else:
-        imgui.text("Choose Dimension from CSV file for X,Y ")
-        changed, CSVxyValues = imgui.input_int2('', *CSVxyValues) 
+        imgui.text("Choose Dimension from CSV file for X,Y,Z ")
+        changed, CSVxyValues = imgui.input_int3('', *CSVxyValues) 
         l=0
         for l in range(len(CSVxyValues)):
             if(CSVxyValues[l] > cols):
                 CSVxyValues[l] = cols
             elif(CSVxyValues[l] < 0):
                 CSVxyValues[l] = 0
+        if(CSVxyValues[2] > zcols):
+            CSVxyValues[2] = zcols
+        elif(CSVxyValues[2] < 0):
+            CSVxyValues[2] = 0
 
         #imgui.same_line() 
-        imgui.text("X: %d, Y: %d" % (CSVxyValues[0],CSVxyValues[1]))
+        imgui.text("X: %d, Y: %d, Z: %d" % (CSVxyValues[0],CSVxyValues[1],CSVxyValues[2]))
         CSVButtonclicked = imgui.button("Save")
     #implementation for csv import
     if imgui.is_item_hovered():
         imgui.set_tooltip("Please save the changes or they won't be passed")
     imgui.end()
 
-FuncValues= 0.01,0.3,1.,1.
-FuncButtonclicked = 0
-f_x_y = 'x**2+x*4'
-Func_Button =0
-superfuncchild =0
-toggleSuperFunc = True
+FuncValues= 0.,1.,0.,1.
+f_x = 'x**2+x*4'
+f_x_y = 'x**2+y**2'
+Func_Button2D =0
+superfuncchild2D =0
+toggleSuperFunc2D = True
+
+Func_Button3D =0
+superfuncchild3D =0
+toggleSuperFunc3D = True
+funcDetail = 10
 def Func_GUI():
     global FuncValues
-    global FuncButtonclicked
     global f_x_y
-    global Func_Button
-    global superfuncchild
-    global toggleSuperFunc
+    global f_x
+
+    global Func_Button2D
+    global superfuncchild2D
+    global toggleSuperFunc2D
+
+    global Func_Button3D
+    global superfuncchild3D
+    global toggleSuperFunc3D
+    global funcDetail
     imgui.begin("Give Function X,Y Values")
 
     #implementation for a,b,c,d points for X,Y functions
-    imgui.text("Give a and b values for X() and c and d for Y() functions")
+    changed, f_x = imgui.input_text(':F(x)',f_x,256)
+
+    Func_Button2D = imgui.button("Print Line")
+
+    changed, f_x_y = imgui.input_text(':F(x,y)',f_x_y,256)
+
+    Func_Button3D = imgui.button("Print Platform")
+
+    imgui.text("Give a to b values for X and c to d for Y")
     changed, FuncValues = imgui.input_float4('', *FuncValues) 
     #imgui.same_line() 
     imgui.text("a: %.1f, b: %.1f, c: %.1f, d: %.1f" % (FuncValues[0],FuncValues[1],FuncValues[2],FuncValues[3]))
-
-    changed, f_x_y = imgui.input_text('Amount:',f_x_y,256)
-    Func_Button = imgui.button("Print Function")
-    if(Func_Button):
-        if superfuncchild != 0:
-            toggleSuperFunc = not toggleSuperFunc
+    changed, funcDetail = imgui.input_int('Detailed', funcDetail) 
+    if imgui.is_item_hovered():
+        imgui.set_tooltip("Make sure the detail is between 4 to 100")
+    if(funcDetail > 100):
+        funcDetail = 100
+    elif(funcDetail<4):
+        funcDetail = 4
+    if(Func_Button2D):
+        x = np.linspace(FuncValues[0],FuncValues[1],funcDetail) 
+        y = f_X(x)
+        if superfuncchild2D != 0:
+            toggleSuperFunc2D = not toggleSuperFunc2D
         else:
             l=0
-            x = np.linspace(FuncValues[0],FuncValues[1],100) 
-            y = np.linspace(FuncValues[2],FuncValues[3],100) 
-            z= f_Z(x,y)
             while (l < len(x)-1):
-                superfuncchild+=1
+                superfuncchild2D+=1
                 l+=1
-                DynamicVariable = "SuperFunction" + str(superfuncchild)
-                point1 =  x[l], y[l], z[l] , 1 
-                point2 =  x[l-1], y[l-1], z[l-1] , 1
+                DynamicVariable = "SuperFunction" + str(superfuncchild2D)
+                point1 =  x[l], y[l], 0 , 1 
+                point2 =  x[l-1], y[l-1], 0 , 1
                 vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1, 1, 1, 0)
-                scene.world.addEntityChild(SuperFunction, vars()[DynamicVariable])
+                scene.world.addEntityChild(SuperFunction2D, vars()[DynamicVariable])
             scene.world.traverse_visit(initUpdate, scene.world.root)
-    
+    if(Func_Button3D):
+        x = np.linspace(FuncValues[0],FuncValues[1],funcDetail) 
+        z = np.linspace(FuncValues[2],FuncValues[3],funcDetail) 
+        y= f_Z(x,z)
+        if superfuncchild3D != 0:
+            toggleSuperFunc3D = not toggleSuperFunc3D
+        else:
+            l = 0
+            while (l < len(x)-2):
+                l += 1
+                #first triangle
+                superfuncchild3D += 1
+                DynamicVariable = "Function" + str(superfuncchild3D)
+                point1 = x[l-1], y[l-1], z[l-1], 1
+                point2 = x[l], y[l], z[l-1], 1
+                point3 = x[l], y[l], z[l], 1
+                vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,1 ,1, 0)
+                scene.world.addEntityChild(SuperFunction3D, vars()[DynamicVariable])
+                #second triangle
+                superfuncchild3D += 1
+                DynamicVariable = "Function" + str(superfuncchild3D)
+                point1 = x[l], y[l], z[l-1], 1
+                point2 = x[l], y[l], z[l], 1
+                point3 = x[l+1], y[l+1], z[l], 1
+                vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,1 ,1, 0)
+                scene.world.addEntityChild(SuperFunction3D, vars()[DynamicVariable])
+                #first triangle next
+                superfuncchild3D += 1
+                DynamicVariable = "Function" + str(superfuncchild3D)
+                point1 = x[l], y[l], z[l], 1
+                point2 = x[l+1], y[l+1], z[l], 1
+                point3 = x[l+1], y[l+1], z[l+1], 1
+                vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,1 ,1, 0)
+                scene.world.addEntityChild(SuperFunction3D, vars()[DynamicVariable])
+                
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+                
     imgui.end()
 
 
@@ -371,7 +485,6 @@ def Area_Chart():
     imgui.end()
 
 
-Scatterplot_Button = 0
 Scatterplot_Button2D =0
 Scatterplot_Button3D =0
 toggle_scatterplot_Button = 0
@@ -379,11 +492,20 @@ toggle_scatterplot = True
 pointchild = 0
 PointSize = 5    
 PointsColor = 0., 1., 1., 1
+
+lsr_Button = 0
+lsr_platform_Button = 0
+lsr2Dchild =0
+lsr3Dchild =0
+lsr2Dtoggle = True
+lsr3Dtoggle = True
+lsrfunclist = []
+lsrXlist = []
+
 def ScatterPlot_Chart():
     global pointchild
     global Scatterplot_Button3D
     global Scatterplot_Button2D
-    global toggle_scatterplot_Button
     global toggle_scatterplot
 
     imgui.begin("- Calculate Scatterplot -")
@@ -409,7 +531,7 @@ def ScatterPlot_Chart():
                 PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], pointListfromCSV[i][zPlane])
             elif Scatterplot_Button2D:
                 PointsNode.getChild(pointchild).trans.l2cam =  util.translate(pointListfromCSV[i][xPlane], pointListfromCSV[i][yPlane], 0)
-        
+    
         time.sleep(0.15)
 
     if imgui.is_item_hovered():
@@ -421,6 +543,8 @@ def ScatterPlot_Chart():
     changed, PointSize = imgui.drag_float("Point Size", PointSize, 0.02, 0.1, 40, "%.1f")
     if (changed):
         gl.glPointSize(PointSize)
+        
+        
     imgui.text("PointSize: %s" % (PointSize))
     imgui.text("")
     changed, PointsColor = imgui.color_edit3("Color", *PointsColor)
@@ -428,7 +552,93 @@ def ScatterPlot_Chart():
     toggle_scatterplot_Button = imgui.button("Toggle Scaterplot On/Off")
     if (toggle_scatterplot_Button):
         toggle_scatterplot = not toggle_scatterplot
+    imgui.text("")
+
+    global lsr_Button
+    global lsr_platform_Button
+    global lsr2Dchild
+    global lsr3Dchild
+    global lsr2Dtoggle
+    global lsr3Dtoggle
+    global lsrfunclist
+    global lsrXlist
+    lsr_Button = imgui.button("Print l.s.r Line")
+    imgui.same_line() 
+    lsr_platform_Button = imgui.button("Print l.s.r Platform")
+
+    if(lsr_Button):
+        arrayfromtupple = np.asarray(pointListfromCSV)
+        x =np.asarray(arrayfromtupple[:,xPlane])
+        M = np.vstack([x, np.ones(len(x))]).T
+        y =np.asarray(arrayfromtupple[:,yPlane])
+        m, c = np.linalg.lstsq(M, y, rcond=None)[0]
         
+        f = m*x+c
+        l=0
+        
+        while(l < len(x) -1):
+            lsr2Dchild+=1
+            l+=1
+            DynamicVariable = "LSR2D" + str(lsr2Dchild)
+            point1 =  x[l], f[l], 0 , 1 
+            point2 =  x[l-1], f[l-1], 0 , 1
+            vars()[DynamicVariable]: GameObjectEntity = LineSpawn(DynamicVariable,point2,point1, 1, 1, 0)
+            scene.world.addEntityChild(LSR2D, vars()[DynamicVariable])
+        scene.world.traverse_visit(initUpdate, scene.world.root)
+    elif(lsr_platform_Button):
+        lsrfunclist.clear()
+        lsrXlist.clear()
+        for i in range(len(keys)):
+            if(values[i]):
+                arr = np.array(values[i])
+                x = arr[:,xPlane]
+                y = arr[:,yPlane]
+                M = np.vstack([x, np.ones(len(x))]).T
+                m, c = np.linalg.lstsq(M, y, rcond=None)[0]
+                
+                f = m*x+c
+                lsrfunclist.append(f)#pass the spline functions to a list for later use
+                lsrXlist.append(x)
+        lengthoflist = 0
+        #get random rgb color for the platform
+        r = random.uniform(0, 1.0)
+        g = random.uniform(0, 1.0)
+        b = random.uniform(0, 1.0)
+        while(lengthoflist < len(lsrfunclist) -1):
+            lengthoflist += 1
+            
+            spline1 = lsrfunclist[lengthoflist-1]
+            spline2 = lsrfunclist[lengthoflist]
+
+            x_new = lsrXlist[lengthoflist]
+            x_old = lsrXlist[lengthoflist-1]
+
+            z_spline1 = keys[lengthoflist-1]
+            z_spline2 = keys[lengthoflist]
+            l =0
+            if(lsr3Dchild==0):#SplineList and lsr3Dchild==0
+                while l < len(x_new) -1 :
+                    l += 1
+                    #first triangle
+                    lsr3Dchild += 1
+                    DynamicVariable = "LSR3D" + str(lsr3Dchild)
+                    point1 = x_old[l-1], spline1[l-1], z_spline1, 1
+                    point2 = x_new[l-1], spline2[l-1], z_spline2, 1
+                    point3 = x_old[l], spline1[l], z_spline1, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,r ,g, b)
+                    scene.world.addEntityChild(LSR3D, vars()[DynamicVariable])
+                    #second triangle
+                    lsr3Dchild += 1
+                    DynamicVariable = "LSR3D" + str(lsr3Dchild)
+                    point1 = x_new[l-1], spline2[l-1], z_spline2, 1
+                    point2 = x_old[l], spline1[l], z_spline1, 1
+                    point3 = x_new[l], spline2[l], z_spline2, 1
+                    vars()[DynamicVariable]: GameObjectEntity = TriangleSpawn(DynamicVariable,point1,point2,point3,r ,g, b)
+                    scene.world.addEntityChild(LSR3D, vars()[DynamicVariable])
+                scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            lsr3Dtoggle = not lsr3Dtoggle
+
     imgui.end()
 
 
@@ -516,6 +726,223 @@ def Histogram_Chart():
     imgui.end()
 
 
+
+ravdogramchild2D = 0
+ravdogramchild3D = 0
+ravdogram_Button2D = 0
+ravdogram_Button3D = 0
+detailedravdogram = 10
+toggle2Dravdogram = True
+toggle3Dravdogram = True
+
+ravXListFrom = []
+ravYListFrom = []
+ravXListTo = []
+ravYListTo = []
+
+def Ravdogram_Chart():
+    global ravXListFrom
+    global ravYListFrom
+    global ravXListTo
+    global ravYListTo
+
+    global ravdogramchild2D
+    global ravdogramchild3D
+
+    global ravdogram_Button2D
+    global ravdogram_Button3D
+    global toggle2Dravdogram
+    global toggle3Dravdogram
+
+    imgui.begin("- Calculate Ravdogram -")
+    imgui.text("Ravdogram ")
+    ravdogram_Button2D = imgui.button("2D Ravdogram")
+    imgui.same_line() 
+    ravdogram_Button3D = imgui.button("3D Ravdogram")
+    
+    if (ravdogram_Button2D):
+        arrayfromtupple = np.asarray(pointListfromCSV)
+        
+        fig = plt.figure()
+        ax = fig.add_axes([0,0,1,1])
+
+        bars = ax.bar(arrayfromtupple[:,xPlane],arrayfromtupple[:,yPlane], width=0.1)    
+        for i in ax.patches:
+            ravXListTo.append(i.get_width())
+            ravYListTo.append(i.get_height())
+            
+        for i in range(len(bars)):
+            ravXListFrom.append(bars[i].xy[0])
+            ravYListFrom.append(bars[i].xy[1])
+            ravXListTo[i] = ravXListFrom[i] + ravXListTo[i]
+            ravYListTo[i] = ravYListFrom[i] + ravYListTo[i]
+
+        i=0
+        if(ravdogramchild2D == 0):
+            while i < len(ravXListFrom):
+                r = random.uniform(0, 1.0)
+                g = random.uniform(0, 1.0)
+                b = random.uniform(0, 1.0)
+                ravdogramchild2D+=1
+                DynamicVariable = "Cube" + str(ravdogramchild2D)
+
+                point1 = ravXListFrom[i], ravYListFrom[i], 0
+                point2 = ravXListFrom[i], ravYListTo[i], 0
+                point3 = ravXListTo[i], ravYListTo[i], 0
+                point4 = ravXListTo[i], ravYListFrom[i], 0              
+                point5 = ravXListFrom[i], ravYListFrom[i], 0
+                point6 = ravXListFrom[i], ravYListTo[i], 0
+                point7 = ravXListTo[i], ravYListTo[i], 0
+                point8 = ravXListTo[i], ravYListFrom[i], 0
+                
+                vars()[DynamicVariable]: GameObjectEntity = CubeSpawn(DynamicVariable,point1,point2,point3,point4,point5,point6,point7,point8,r,g,b)
+                scene.world.addEntityChild(Ravdogram2D, vars()[DynamicVariable])
+                i+=1
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            toggle2Dravdogram = not toggle2Dravdogram
+    elif(ravdogram_Button3D):
+        if(ravdogramchild3D == 0):
+            fig = plt.figure()
+            ax = fig.add_axes([0,0,1,1])    
+            for x in range(len(keys)):
+                if(values[x]):
+                    arr = np.array(values[x])
+                bars = ax.bar(arr[:,xPlane],arr[:,yPlane], width=0.3)  
+
+                ravXListFrom.clear()
+                ravYListFrom.clear()
+                ravXListTo.clear()
+                ravYListTo.clear()
+                for i in ax.patches:
+                    ravXListTo.append(i.get_width())
+                    ravYListTo.append(i.get_height())
+                    
+                for i in range(len(bars)):
+                    ravXListFrom.append(bars[i].xy[0])
+                    ravYListFrom.append(bars[i].xy[1])
+                    ravXListTo[i] = ravXListFrom[i] + ravXListTo[i]
+                    ravYListTo[i] = ravYListFrom[i] + ravYListTo[i]
+                    
+                i=0
+                while i < len(ravXListFrom):
+                    r = random.uniform(0, 1.0)
+                    g = random.uniform(0, 1.0)
+                    b = random.uniform(0, 1.0)
+                    ravdogramchild3D+=1
+                    DynamicVariable = "Cube" + str(ravdogramchild3D)
+
+                    point1 = ravXListFrom[i], ravYListFrom[i], keys[x]+1
+                    point2 = ravXListFrom[i], ravYListTo[i], keys[x]+1
+                    point3 = ravXListTo[i], ravYListTo[i], keys[x]+1
+                    point4 = ravXListTo[i], ravYListFrom[i], keys[x]+1              
+                    point5 = ravXListFrom[i], ravYListFrom[i], keys[x]
+                    point6 = ravXListFrom[i], ravYListTo[i], keys[x]
+                    point7 = ravXListTo[i], ravYListTo[i], keys[x]
+                    point8 = ravXListTo[i], ravYListFrom[i], keys[x]
+                    
+                    vars()[DynamicVariable]: GameObjectEntity = CubeSpawn(DynamicVariable,point1,point2,point3,point4,point5,point6,point7,point8,r,g,b)
+                    scene.world.addEntityChild(Ravdogram3D, vars()[DynamicVariable])
+                    i+=1
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            toggle3Dravdogram = not toggle3Dravdogram
+    
+        
+    imgui.end()
+
+piechild2D = 0
+piechild3D = 0
+pie_Button2D = 0
+pie_Button3D = 0
+toggle2Dpie = True
+toggle3Dpie = True
+def Pita_Chart():
+    global piechild2D
+    global piechild3D
+    global pie_Button2D
+    global pie_Button3D
+    global toggle2Dpie
+    global toggle3Dpie
+    
+    imgui.begin("- Calculate pie -")
+    imgui.text("pie chart")
+
+    arrayfromtupple = np.asarray(pointListfromCSV)  
+    pie_Button2D = imgui.button("2D pie") 
+    imgui.same_line() 
+    pie_Button3D = imgui.button("3D pie") 
+
+    if(pie_Button2D):
+        if(piechild2D == 0):
+            xPercentagevalues = np.rint(arrayfromtupple[:,xPlane]/sum(arrayfromtupple[:,xPlane])*100).astype(int)
+            x = np.linspace(0.2, 1.8, sum(xPercentagevalues)+5)
+            
+            i=0
+            counter = 0
+            while counter < len(xPercentagevalues):
+                r = random.uniform(0, 1.0)
+                g = random.uniform(0, 1.0)
+                b = random.uniform(0, 1.0)
+                i+=xPercentagevalues[counter]
+                
+                
+                piechild2D+=1
+                DynamicVariable = "Cube" + str(piechild2D)
+
+                point1 = x[i-xPercentagevalues[counter]], 0, 0
+                point2 = x[i-xPercentagevalues[counter]], 0.5, 0
+                point3 = x[i], 0.5, 0
+                point4 = x[i], 0, 0              
+                point5 = x[i-xPercentagevalues[counter]], 0, 0
+                point6 = x[i-xPercentagevalues[counter]], 0.5, 0
+                point7 = x[i], 0.5, 0
+                point8 = x[i], 0, 0
+                
+                vars()[DynamicVariable]: GameObjectEntity = CubeSpawn(DynamicVariable,point1,point2,point3,point4,point5,point6,point7,point8,r,g,b)
+                scene.world.addEntityChild(Pie2D, vars()[DynamicVariable])
+                counter+=1
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            toggle2Dpie = not toggle2Dpie
+    elif(pie_Button3D):
+        if(piechild3D == 0):
+            xPercentagevalues = np.rint(arrayfromtupple[:,xPlane]/sum(arrayfromtupple[:,xPlane])*100).astype(int)
+            x = np.linspace(0.2, 1.8, sum(xPercentagevalues)+5)
+            
+            i=0
+            counter = 0
+            while counter < len(xPercentagevalues):
+                r = random.uniform(0, 1.0)
+                g = random.uniform(0, 1.0)
+                b = random.uniform(0, 1.0)
+                i+=xPercentagevalues[counter]
+                
+                
+                piechild3D+=1
+                DynamicVariable = "Cube" + str(piechild3D)
+
+                point1 = x[i-xPercentagevalues[counter]], 0, 1
+                point2 = x[i-xPercentagevalues[counter]], 0.5, 1
+                point3 = x[i], 0.5, 1
+                point4 = x[i], 0, 1              
+                point5 = x[i-xPercentagevalues[counter]], 0, 0
+                point6 = x[i-xPercentagevalues[counter]], 0.5, 0
+                point7 = x[i], 0.5, 0
+                point8 = x[i], 0, 0
+                
+                vars()[DynamicVariable]: GameObjectEntity = CubeSpawn(DynamicVariable,point1,point2,point3,point4,point5,point6,point7,point8,r,g,b)
+                scene.world.addEntityChild(Pie3D, vars()[DynamicVariable])
+                counter+=1
+            scene.world.traverse_visit(initUpdate, scene.world.root)
+        else:
+            toggle3Dpie = not toggle3Dpie
+
+    #imgui.same_line() 
+    #ravdogram_Button3D = imgui.button("3D pie")
+    imgui.end()
+
+    
 def displayGUI():
     """
         displays ImGui
@@ -526,7 +953,8 @@ def displayGUI():
     Area_Chart()
     ScatterPlot_Chart()
     Histogram_Chart()
-
+    Ravdogram_Chart()
+    Pita_Chart()
 
 def f_Z (x,y):
     global f_x_y
@@ -535,6 +963,13 @@ def f_Z (x,y):
     d['y'] = y
     z = eval(f_x_y,d)
     return z
+
+def f_X (x):
+    global f_x
+    d= {}
+    d['x'] = x
+    y = eval(f_x,d)
+    return y
 
 
 COLOR_FRAG = """
@@ -863,8 +1298,6 @@ def main (imguiFlag = False):
     # gl.glDepthMask(gl.GL_FALSE)  
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
-
-
     ################### EVENT MANAGER ###################
     scene.world.traverse_visit(initUpdate, scene.world.root)
 
@@ -936,17 +1369,35 @@ def main (imguiFlag = False):
     global trianglechild3D
     global togglePlatformSwitch3D
 
-    global superfuncchild
-    global toggleSuperFunc
+    global superfuncchild2D
+    global toggleSuperFunc2D
+    
+    global superfuncchild3D
+    global toggleSuperFunc3D
 
     global histogramchild2D
     global histogramchild3D
     global toggle2DHistogram
     global toggle3DHistogram
 
+    global ravdogramchild2D
+    global toggle2Dravdogram
+    global ravdogramchild3D
+    global toggle3Dravdogram
 
+
+    global lsr2Dchild
+    global lsr3Dchild
+    global lsr2Dtoggle
+    global lsr3Dtoggle
+
+    global piechild2D
+    global piechild3D
+    global toggle2Dpie
+    global toggle3Dpie
+    
     #we split our csv based on common Z plane values and pass it to 2 lists for later use
-    for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[zPlane]):
+    for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[7]):
         keys.append(Zplanekey)
         values.append(list(value))
     for i in range(len(keys)):
@@ -999,11 +1450,18 @@ def main (imguiFlag = False):
             i+=1
         i=1
         #print SuperFunction
-        while i <= superfuncchild:
-            if toggleSuperFunc:
-                SuperFunction.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction.getChild(i).trans.l2cam, mat4=True)
+        while i <= superfuncchild2D:
+            if toggleSuperFunc2D:
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction2D.getChild(i).trans.l2cam, mat4=True)
             else:
-                SuperFunction.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        while i <= superfuncchild3D:
+            if toggleSuperFunc3D:
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction3D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
         i=1
         #print Histogram2D
@@ -1020,6 +1478,50 @@ def main (imguiFlag = False):
                 Histogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Histogram3D.getChild(i).trans.l2cam, mat4=True)
             else:
                 Histogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        #print Ravdogram2D
+        while i<= ravdogramchild2D:
+            if(toggle2Dravdogram):
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Ravdogram2D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        while i<= ravdogramchild3D:
+            if(toggle3Dravdogram):
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Ravdogram3D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+
+        while i<= lsr2Dchild:
+            if(lsr2Dtoggle):
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LSR2D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        while i<= lsr3Dchild:
+            if(lsr3Dtoggle):
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LSR3D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        while i<= piechild2D:
+            if(toggle2Dpie):
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Pie2D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
+            i+=1
+        i=1
+        while i<= piechild3D:
+            if(toggle3Dpie):
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Pie3D.getChild(i).trans.l2cam, mat4=True)
+            else:
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
         i=1
         scene.render_post()
