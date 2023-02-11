@@ -102,7 +102,6 @@ zPlane = 0
 while((yPlane) == xPlane):# having x and y plane from the same csv collumn is ugly!
     yPlane = random.randint(0, cols)
 
-
 scene = Scene()    
 rootEntity = scene.world.createEntity(Entity(name="RooT"))
 entityCam1 = scene.world.createEntity(Entity(name="entityCam1"))
@@ -905,7 +904,6 @@ ravXListFrom = []
 ravYListFrom = []
 ravXListTo = []
 ravYListTo = []
-
 def Ravdogram_Chart():
     global ravXListFrom
     global ravYListFrom
@@ -1185,6 +1183,17 @@ def removeEntityChilds(entity: Entity):
     while entity.getChild(1) != None:
         entity.remove(entity.getChild(1))
 
+LightPosionValues= 0.4,8.,0.5
+
+def light_GUI():
+    global LightPosionValues
+    imgui.begin("-Light Controls -")
+    imgui.text("Light Position Values X,Y,Z ")
+    #changed, LightPosionValues = imgui.input_float3('', *LightPosionValues) 
+    changed, LightPosionValues = imgui.drag_float3("Light Position Settings", *LightPosionValues, 0.02, 0.1, 40, "%.1f")
+
+    imgui.end()
+
 def displayGUI():
     """
         displays ImGui
@@ -1196,7 +1205,8 @@ def displayGUI():
     ScatterPlot_Chart()
     Histogram_Chart()
     Ravdogram_Chart()
-    Pita_Chart()
+    Pita_Chart()    
+    light_GUI()
 
     CleanData()
 
@@ -1229,7 +1239,9 @@ COLOR_FRAG = """
         //outputColor = vec4(0.1, 0.1, 0.1, 1);
     }
 """
+
 COLOR_VERT_MVP = """
+
     #version 410
 
     layout (location=0) in vec4 vPosition;
@@ -1244,6 +1256,74 @@ COLOR_VERT_MVP = """
 
         gl_Position = modelViewProj * vPosition;
         color = extColor;
+    }
+"""
+    
+VERT_PHONG_MVP = """
+    #version 410
+
+    layout (location=0) in vec4 vPosition;
+    layout (location=1) in vec4 vColor;
+    layout (location=2) in vec4 vNormal;
+
+    out     vec4 pos;
+    out     vec4 color;
+    out     vec3 normal;
+    
+    uniform mat4 modelViewProj;
+    uniform mat4 model;
+
+    void main()
+    {
+        gl_Position = modelViewProj * vPosition;
+        pos = model * vPosition;
+        color = vColor;
+        normal = mat3(transpose(inverse(model))) * vNormal.xyz;
+    }
+"""
+
+FRAG_PHONG = """
+    #version 410
+
+    in vec4 pos;
+    in vec4 color;
+    in vec3 normal;
+
+    out vec4 outputColor;
+
+    // Phong products
+    uniform vec3 ambientColor;
+    uniform float ambientStr;
+
+    // Lighting 
+    uniform vec3 viewPos;
+    uniform vec3 lightPos;
+    uniform vec3 lightColor;
+    uniform float lightIntensity;
+
+    // Material
+    uniform float shininess;
+    uniform vec3 matColor;
+
+    void main()
+    {
+        vec3 norm = normalize(normal);
+        vec3 lightDir = normalize(lightPos - pos.xyz);
+        vec3 viewDir = normalize(viewPos - pos.xyz);
+        vec3 reflectDir = reflect(-lightDir, norm);
+        
+
+        // Ambient
+        vec3 ambientProduct = ambientStr * ambientColor;
+        // Diffuse
+        float diffuseStr = max(dot(norm, lightDir), 0.0);
+        vec3 diffuseProduct = diffuseStr * lightColor;
+        // Specular
+        float specularStr = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+        vec3 specularProduct = shininess * specularStr * color.xyz;
+        
+        vec3 result = (ambientProduct + (diffuseProduct + specularProduct) * lightIntensity) * matColor;
+        outputColor = vec4(result, 1);
     }
 """
 
@@ -1332,8 +1412,8 @@ class GameObjectEntity(Entity):
         # Create basic components of a primitive object
         self.trans          = BasicTransform(name="trans", trs=util.identity())
         self.mesh           = RenderMesh(name="mesh")
-        # self.shaderDec      = ShaderGLDecorator(Shader(vertex_source=Shader.VERT_PHONG_MVP, fragment_source=Shader.FRAG_PHONG))
-        self.shaderDec      = ShaderGLDecorator(Shader(vertex_source= Shader.COLOR_VERT_MVP, fragment_source=Shader.COLOR_FRAG))
+        self.shaderDec      = ShaderGLDecorator(Shader(vertex_source=VERT_PHONG_MVP, fragment_source=FRAG_PHONG))
+        #self.shaderDec      = ShaderGLDecorator(Shader(vertex_source= Shader.COLOR_VERT_MVP, fragment_source=Shader.COLOR_FRAG))
         self.vArray         = VertexArray(primitive= primitiveID)
         # Add components to entity
         scene = Scene()
@@ -1393,8 +1473,8 @@ def CubeSpawn(cubename = "Cube",p1=[-0.5, -0.5, 0.5, 1.0],p2 = [-0.5, 0.5, 0.5, 
         dtype=np.uint32
     ) #rhombus out of two triangles
 
-    #vertices, colors, indices, normals = IndexedConverter().Convert(vertices, colors, indices, produceNormals=True);
-    cube.SetVertexAttributes(vertices, colors, indices, None)
+    vertices, colors, indices, normals = IndexedConverter().Convert(vertices, colors, indices, produceNormals=True);
+    cube.SetVertexAttributes(vertices, colors, indices, normals)
     
     return cube
 
@@ -1416,10 +1496,8 @@ def TriangleSpawn(trianglename = "Triangle",p1=[0,0,0,1],p2 = [0.4,0.4,0,1],p3 =
         ),
         dtype=np.uint32
     ) 
-    #vertices, colors, indices, normals = IndexedConverter().Convert(vertices, colors, indices, produceNormals=True)
-
-    #triangle.SetVertexAttributes(vertices, colors, indices, normals)
-    triangle.SetVertexAttributes(vertices, colors, indices, None)
+    vertices, colors, indices, normals = IndexedConverter().Convert(vertices, colors, indices, produceNormals=True)
+    triangle.SetVertexAttributes(vertices, colors, indices, normals)
 
     
     return triangle
@@ -1466,19 +1544,7 @@ def PointSpawn(pointname = "Point",p1=[0,0,0,1],r=0.,g=1.,b=1.):
     point.SetVertexAttributes(vertices, colors, indices, None)
     
     return point
-    font = pygame.font.SysFont('arial', 64)
 
-
-#pygame.init()
-#clock = pygame.time.Clock()
-#display = (400, 300)
-#pygame.display.set_mode(display, DOUBLEBUF | OPENGL)
-#font = pygame.font.SysFont('arial', 64)
-def drawText(x, y, text):           
-    textSurface = font.render(text, True, (255, 255, 66, 255), (0, 66, 0, 255))
-    textData = pygame.image.tostring(textSurface, "RGBA", True)
-    gl.glWindowPos2d(x, y)
-    gl.glDrawPixels(textSurface.get_width(), textSurface.get_height(), gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, textData)
 
 
 def main (imguiFlag = False):
@@ -1661,6 +1727,20 @@ def main (imguiFlag = False):
     global plattoggleZ 
 
     global spotPointschild
+    global LightPosionValues
+    #Light
+    
+    #Lposition = util.vec(LightPosionValues) #uniform lightpos
+
+    Lambientcolor = util.vec(1.0, 1.0, 5.0) #uniform ambient color
+    Lambientstr = 0.1 #uniform ambientStr
+    LviewPos = util.vec(2.5, 2.8, 5.0) #uniform viewpos
+    Lcolor = util.vec(1.0,1.0,1.0)
+    Lintensity = 0.5
+    #Material
+    Mshininess = 0.0 
+    Mcolor = util.vec(0.7, 0.35, 0.0)
+
     #we split our csv based on common Z plane values and pass it to 2 lists for later use
     for Zplanekey, value in itertools.groupby(pointListfromCSV, lambda x: x[7]):
         keys.append(Zplanekey)
@@ -1702,6 +1782,15 @@ def main (imguiFlag = False):
         while i <= trianglechild3D:
             if togglePlatformSwitch3D:
                 Area3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Area3D.getChild(i).trans.l2cam, mat4=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='model',value=Area3D.getChild(i).trans.l2cam,mat4=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Area3D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Area3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1710,6 +1799,15 @@ def main (imguiFlag = False):
         while i <= trianglechild2D:
             if togglePlatformSwitch2D:
                 Area2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Area2D.getChild(i).trans.l2cam, mat4=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='model',value=Area2D.getChild(i).trans.l2cam,mat4=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Area2D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Area2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1718,6 +1816,15 @@ def main (imguiFlag = False):
         while i <= superfuncchild2D:
             if toggleSuperFunc2D:
                 SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction2D.getChild(i).trans.l2cam, mat4=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='model',value=SuperFunction2D.getChild(i).trans.l2cam,mat4=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 SuperFunction2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1725,6 +1832,15 @@ def main (imguiFlag = False):
         while i <= superfuncchild3D:
             if toggleSuperFunc3D:
                 SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @SuperFunction3D.getChild(i).trans.l2cam, mat4=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='model',value=SuperFunction3D.getChild(i).trans.l2cam,mat4=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 SuperFunction3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1733,6 +1849,15 @@ def main (imguiFlag = False):
         while i<= histogramchild2D:
             if(toggle2DHistogram):
                 Histogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Histogram2D.getChild(i).trans.l2cam, mat4=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='model',value=Histogram2D.getChild(i).trans.l2cam,mat4=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Histogram2D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Histogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1741,6 +1866,15 @@ def main (imguiFlag = False):
         while i<= histogramchild3D:
             if(toggle3DHistogram):
                 Histogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Histogram3D.getChild(i).trans.l2cam, mat4=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='model',value=Histogram3D.getChild(i).trans.l2cam,mat4=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Histogram3D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Histogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1749,6 +1883,15 @@ def main (imguiFlag = False):
         while i<= ravdogramchild2D:
             if(toggle2Dravdogram):
                 Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Ravdogram2D.getChild(i).trans.l2cam, mat4=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='model',value=Ravdogram2D.getChild(i).trans.l2cam,mat4=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Ravdogram2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1756,6 +1899,15 @@ def main (imguiFlag = False):
         while i<= ravdogramchild3D:
             if(toggle3Dravdogram):
                 Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Ravdogram3D.getChild(i).trans.l2cam, mat4=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='model',value=Ravdogram3D.getChild(i).trans.l2cam,mat4=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Ravdogram3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1764,6 +1916,15 @@ def main (imguiFlag = False):
         while i<= lsr2Dchild:
             if(lsr2Dtoggle):
                 LSR2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LSR2D.getChild(i).trans.l2cam, mat4=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='model',value=LSR2D.getChild(i).trans.l2cam,mat4=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                LSR2D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 LSR2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1771,6 +1932,15 @@ def main (imguiFlag = False):
         while i<= lsr3Dchild:
             if(lsr3Dtoggle):
                 LSR3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @LSR3D.getChild(i).trans.l2cam, mat4=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='model',value=LSR3D.getChild(i).trans.l2cam,mat4=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                LSR3D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 LSR3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1778,6 +1948,15 @@ def main (imguiFlag = False):
         while i<= piechild2D:
             if(toggle2Dpie):
                 Pie2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Pie2D.getChild(i).trans.l2cam, mat4=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='model',value=Pie2D.getChild(i).trans.l2cam,mat4=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Pie2D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Pie2D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1785,6 +1964,15 @@ def main (imguiFlag = False):
         while i<= piechild3D:
             if(toggle3Dpie):
                 Pie3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=mvp_point @Pie3D.getChild(i).trans.l2cam, mat4=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='model',value=Pie3D.getChild(i).trans.l2cam,mat4=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='ambientColor',value=Lambientcolor,float3=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='ambientStr',value=Lambientstr,float1=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='viewPos',value=LviewPos,float3=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='lightPos',value=Lposition,float3=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='lightColor',value=Lcolor,float3=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='lightIntensity',value=Lintensity,float1=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='shininess',value=Mshininess,float1=True)
+                Pie3D.getChild(i).shaderDec.setUniformVariable(key='matColor',value=Mcolor,float3=True)
             else:
                 Pie3D.getChild(i).shaderDec.setUniformVariable(key='modelViewProj', value=None, mat4=True)
             i+=1
@@ -1815,6 +2003,8 @@ def main (imguiFlag = False):
         i=1
         scene.render_post()
     while running:
+        Lposition = util.vec(LightPosionValues) #uniform lightpos
+
         running = scene.render(running)
         scene.world.traverse_visit(renderUpdate, scene.world.root)
         view =  gWindow._myCamera # updates view via the imgui
